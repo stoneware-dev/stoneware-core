@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "create-sinter": "./index.mjs"
+    "create-sinter": "index.mjs"
   },
   "files": [
     "index.mjs",

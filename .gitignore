@@ -15,6 +15,10 @@ node_modules/
 .env.*
 !.env.example
 
+# npm auth. `npm config set //registry.npmjs.org/:_authToken=...` writes to
+# ~/.npmrc, but a stray project-level one would carry a publish token.
+.npmrc
+
 # Logs
 *.log
 
