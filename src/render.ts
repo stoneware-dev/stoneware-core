@@ -39,6 +39,9 @@ const ATTRIBUTE_ALIASES: Record<string, string> = {
   htmlFor: "for",
 };
 
+/** When an island instance hydrates. `load` is the default. */
+export type HydrationStrategy = "load" | "visible" | "idle" | "media";
+
 export interface CollectedIsland {
   /** Island name, derived from its filename (e.g. `Counter`). */
   name: string;
@@ -46,6 +49,10 @@ export interface CollectedIsland {
   id: string;
   /** Props the island was rendered with, replayed verbatim on the client. */
   props: Props;
+  /** Chosen by a `client:*` directive on the usage site. */
+  strategy: HydrationStrategy;
+  /** The media query, for `client:media` only. */
+  query?: string;
 }
 
 export interface RenderOptions {
@@ -196,6 +203,16 @@ function renderAttributes(props: Props, tag: string): string {
     // Event handlers only mean something once an island is hydrated.
     if (EVENT_HANDLER.test(name)) continue;
 
+    // A directive here has reached a plain element rather than an island, so
+    // nothing would ever act on it. Silently rendering it as an attribute is
+    // the worst outcome: the page looks correct and never hydrates lazily.
+    if (name.startsWith(DIRECTIVE_PREFIX)) {
+      throw new Error(
+        `<${tag}> has a hydration directive ${JSON.stringify(name)}, but only islands hydrate. ` +
+          `Move the directive to the island component itself.`,
+      );
+    }
+
     const attribute = ATTRIBUTE_ALIASES[name] ?? name;
     if (!VALID_ATTRIBUTE_NAME.test(attribute)) {
       throw new Error(`Invalid attribute name ${JSON.stringify(name)} on <${tag}>.`);
@@ -255,11 +272,16 @@ const UNITLESS_PROPERTIES = new Set([
 function renderIsland(name: string, component: Component<any>, props: Props, ctx: Context): string {
   const id = `stoneware-${ctx.collected.length}`;
 
-  assertSerializableProps(name, props);
-  ctx.collected.push({ name, id, props });
+  // The directive is an instruction to the framework, not data for the island:
+  // it is stripped before the component sees it and before it reaches the
+  // payload, so an island never has to know it exists.
+  const { strategy, query, rest } = takeDirective(name, props);
+
+  assertSerializableProps(name, rest);
+  ctx.collected.push({ name, id, props: rest, strategy, query });
 
   // Resolve through any wrapper components until an intrinsic element appears.
-  let resolved = component(props) as Child;
+  let resolved = component(rest) as Child;
   let guard = 0;
   while (isVNode(resolved) && typeof resolved.type === "function") {
     if (++guard > 100) {
@@ -283,6 +305,68 @@ function renderIsland(name: string, component: Component<any>, props: Props, ctx
   };
 
   return renderElement(resolved.type, marked, ctx);
+}
+
+const DIRECTIVE_PREFIX = "client:";
+
+const STRATEGIES: Record<string, HydrationStrategy> = {
+  "client:load": "load",
+  "client:visible": "visible",
+  "client:idle": "idle",
+  "client:media": "media",
+};
+
+/**
+ * Read the `client:*` directive off an island's props, if there is one.
+ *
+ * Two directives on one usage is an error rather than a precedence rule to
+ * memorize - there is no sensible answer to `<Chart client:idle client:visible />`
+ * and guessing one would be worse than saying so.
+ */
+function takeDirective(
+  name: string,
+  props: Props,
+): { strategy: HydrationStrategy; query?: string; rest: Props } {
+  let strategy: HydrationStrategy = "load";
+  let query: string | undefined;
+  let found: string | undefined;
+  const rest: Props = {};
+
+  for (const [key, value] of Object.entries(props)) {
+    if (!key.startsWith(DIRECTIVE_PREFIX)) {
+      rest[key] = value;
+      continue;
+    }
+
+    const resolved = STRATEGIES[key];
+    if (resolved === undefined) {
+      throw new Error(
+        `Island "${name}" has an unknown directive "${key}". ` +
+          `Valid directives are: ${Object.keys(STRATEGIES).join(", ")}.`,
+      );
+    }
+    if (found !== undefined) {
+      throw new Error(
+        `Island "${name}" has two hydration directives, "${found}" and "${key}". ` +
+          `An island instance hydrates once, so it can only have one.`,
+      );
+    }
+
+    found = key;
+    strategy = resolved;
+
+    if (resolved === "media") {
+      if (typeof value !== "string" || value.trim() === "") {
+        throw new Error(
+          `Island "${name}" uses client:media, which needs a media query — ` +
+            `for example client:media="(min-width: 60rem)".`,
+        );
+      }
+      query = value;
+    }
+  }
+
+  return { strategy, query, rest };
 }
 
 /**
@@ -325,8 +409,24 @@ function assertSerializableProps(name: string, props: Props): void {
  * escaped so the payload cannot terminate the element. Nothing user-controlled
  * is ever concatenated into executable script source (CLAUDE.md §10).
  */
-export function renderIslandPayload(islands: CollectedIsland[]): string {
+export function renderIslandPayload(
+  islands: CollectedIsland[],
+  chunks: Record<string, string> = {},
+): string {
   if (islands.length === 0) return "";
-  const data = islands.map(({ name, id, props }) => ({ name, id, props }));
+
+  const data = {
+    islands: islands.map(({ name, id, props, strategy, query }) => ({
+      name,
+      id,
+      props,
+      // Omitted for the common case, which keeps eager pages byte-identical to
+      // what they were before directives existed.
+      ...(strategy === "load" ? {} : { on: strategy }),
+      ...(query === undefined ? {} : { q: query }),
+    })),
+    chunks,
+  };
+
   return `<script type="application/json" id="stoneware-islands">${safeJSONStringify(data)}</script>`;
 }

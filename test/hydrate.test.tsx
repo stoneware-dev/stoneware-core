@@ -174,7 +174,7 @@ describe("hydration", () => {
     document.body.innerHTML =
       `<button type="button" data-stoneware-island="Counter" data-stoneware-id="stoneware-0">Clicked 3 times</button>` +
       `<script type="application/json" id="stoneware-islands">` +
-      `[{"name":"Counter","id":"stoneware-0","props":{"start":3}}]</script>`;
+      `{"islands":[{"name":"Counter","id":"stoneware-0","props":{"start":3}}],"chunks":{}}</script>`;
 
     hydrate("Counter", Counter);
 
@@ -189,7 +189,7 @@ describe("hydration", () => {
     document.body.innerHTML =
       `<button data-stoneware-island="Counter" data-stoneware-id="stoneware-0">Clicked 0 times</button>` +
       `<script type="application/json" id="stoneware-islands">` +
-      `[{"name":"Counter","id":"stoneware-0","props":{"start":0}}]</script>`;
+      `{"islands":[{"name":"Counter","id":"stoneware-0","props":{"start":0}}],"chunks":{}}</script>`;
 
     hydrate("Counter", Counter);
 
@@ -202,8 +202,8 @@ describe("hydration", () => {
       `<button data-stoneware-island="Counter" data-stoneware-id="stoneware-0">Clicked 0 times</button>` +
       `<button data-stoneware-island="Counter" data-stoneware-id="stoneware-1">Clicked 10 times</button>` +
       `<script type="application/json" id="stoneware-islands">` +
-      `[{"name":"Counter","id":"stoneware-0","props":{"start":0}},` +
-      `{"name":"Counter","id":"stoneware-1","props":{"start":10}}]</script>`;
+      `{"islands":[{"name":"Counter","id":"stoneware-0","props":{"start":0}},` +
+      `{"name":"Counter","id":"stoneware-1","props":{"start":10}}],"chunks":{}}</script>`;
 
     hydrate("Counter", Counter);
 

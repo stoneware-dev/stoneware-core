@@ -75,8 +75,25 @@ export namespace JSX {
     children: object;
   }
 
+  /**
+   * Props accepted by every component, on top of its own.
+   *
+   * The hydration directives live here because TypeScript cannot tell an island
+   * from any other function: an island is one by virtue of living in
+   * `islands/`, which is a fact about the filesystem, not about the type. So
+   * the directives type-check anywhere a component is used, and the renderer is
+   * what rejects them on something that will never hydrate.
+   */
   export interface IntrinsicAttributes {
     key?: string | number;
+    /** Hydrate as soon as the island's chunk loads. The default. */
+    "client:load"?: boolean;
+    /** Hydrate when the island scrolls into view. */
+    "client:visible"?: boolean;
+    /** Hydrate when the browser next goes idle. */
+    "client:idle"?: boolean;
+    /** Hydrate when a media query matches, e.g. "(min-width: 60rem)". */
+    "client:media"?: string;
   }
 
   export interface IntrinsicElements {

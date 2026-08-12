@@ -227,9 +227,16 @@ describe("milestone 3 - signals", () => {
     )?.[1];
 
     expect(payload).toBeDefined();
-    const parsed = JSON.parse(payload!) as { name: string; id: string; props: object }[];
-    expect(parsed.map((entry) => entry.name)).toEqual(["Badge", "Counter"]);
-    expect(parsed.every((entry) => typeof entry.id === "string")).toBe(true);
+    const parsed = JSON.parse(payload!) as {
+      islands: { name: string; id: string; props: object; on?: string }[];
+      chunks: Record<string, string>;
+    };
+    expect(parsed.islands.map((entry) => entry.name)).toEqual(["Badge", "Counter"]);
+    expect(parsed.islands.every((entry) => typeof entry.id === "string")).toBe(true);
+
+    // Eager is the default, so it costs nothing in the HTML.
+    expect(parsed.islands.every((entry) => entry.on === undefined)).toBe(true);
+    expect(parsed.chunks).toEqual({});
   });
 
   test("a shared signal is bundled once, into a chunk both islands import", async () => {

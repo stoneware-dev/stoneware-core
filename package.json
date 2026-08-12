@@ -15,6 +15,7 @@
     "./jsx-dev-runtime": "./src/jsx-runtime.ts",
     "./signals": "./src/signals.ts",
     "./client": "./src/client/index.ts",
+    "./client/runtime": "./src/client/runtime.ts",
     "./package.json": "./package.json"
   },
   "files": [

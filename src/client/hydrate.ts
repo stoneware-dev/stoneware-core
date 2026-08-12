@@ -1,9 +1,9 @@
 /**
  * Island hydration.
  *
- * v0.1 hydrates eagerly: every island on the page activates as soon as its
- * bundle loads (CLAUDE.md §8). Lazy `client:visible`-style directives are a
- * fast-follow, not launch-blocking.
+ * An island bundle calls `hydrate()` once with its own name and component. What
+ * happens next depends on each instance's directive: `client:load` instances
+ * mount immediately, and anything lazier waits for its trigger (see lazy.ts).
  *
  * Props arrive through a `type="application/json"` payload the server emitted.
  * They are parsed as data, never evaluated - no inline executable script is
@@ -11,71 +11,65 @@
  */
 
 import { mountTree } from "./dom.ts";
-import type { Component, Props } from "../types.ts";
+import { claim, hasTriggered, readPayload, register } from "./registry.ts";
+import type { PayloadEntry } from "./registry.ts";
+import type { Component } from "../types.ts";
 
-interface IslandPayloadEntry {
-  name: string;
-  id: string;
-  props: Props;
-}
+/**
+ * Activate the instances of one island that are ready for it.
+ *
+ * Called on load, and again if the chunk is re-imported, so it is written to be
+ * safe to repeat: an instance already mounted is skipped.
+ */
+export function hydrate(name: string, component: Component<any>): void {
+  const mount = (entry: PayloadEntry) => mountEntry(entry, component);
 
-const PAYLOAD_ELEMENT_ID = "stoneware-islands";
+  // Read before registering. `readPayload` resets the per-document state when
+  // it sees a new payload element, so registering first would put this mounter
+  // in place a moment before that reset ran.
+  const { islands } = readPayload();
+  register(name, mount);
 
-// Parsing once per page is the point, but the cache is keyed on the payload
-// element itself rather than a plain flag: if the document is replaced - a dev
-// live-reload, a test, a future client-side navigation - the stale entry is
-// discarded instead of silently hydrating against props that no longer exist.
-let cachedElement: HTMLElement | null = null;
-let cachedPayload: IslandPayloadEntry[] = [];
+  for (const entry of islands) {
+    if (entry.name !== name) continue;
 
-function readPayload(): IslandPayloadEntry[] {
-  const element = document.getElementById(PAYLOAD_ELEMENT_ID);
-  if (element === cachedElement) return cachedPayload;
+    const strategy = entry.on ?? "load";
 
-  cachedElement = element;
-  cachedPayload = [];
-
-  if (!element?.textContent) return cachedPayload;
-
-  try {
-    const parsed = JSON.parse(element.textContent);
-    if (Array.isArray(parsed)) cachedPayload = parsed;
-  } catch (error) {
-    console.error("[stoneware] Island payload is not valid JSON; islands will not hydrate.", error);
+    // Eager instances, plus any lazy instance whose trigger already fired while
+    // this chunk was still downloading.
+    if (strategy === "load" || hasTriggered(entry.id)) mount(entry);
   }
-  return cachedPayload;
 }
 
 /**
- * Activate every occurrence of one island on the page.
+ * Mount one island instance, replacing its server-rendered element.
  *
- * Each island bundle calls this once with its own name and component. The
- * server-rendered element is replaced by the client-built tree rather than
- * patched: with no VDOM there is nothing to reconcile against, and because both
- * sides render the same component with the same props the swap is not visible.
+ * The element is replaced rather than patched: with no VDOM there is nothing to
+ * reconcile against, and because both sides render the same component with the
+ * same props the swap is not visible.
  */
-export function hydrate(name: string, component: Component<any>): void {
-  for (const entry of readPayload()) {
-    if (entry.name !== name) continue;
+function mountEntry(entry: PayloadEntry, component: Component<any>): void {
+  if (!claim(entry.id)) return;
 
-    const target = document.querySelector(`[data-stoneware-id="${CSS.escape(entry.id)}"]`);
-    if (!target) {
-      console.warn(`[stoneware] No server-rendered element found for island "${name}" (${entry.id}).`);
-      continue;
-    }
+  const target = document.querySelector(`[data-stoneware-id="${CSS.escape(entry.id)}"]`);
+  if (!target) {
+    console.warn(
+      `[stoneware] No server-rendered element found for island "${entry.name}" (${entry.id}).`,
+    );
+    return;
+  }
 
-    try {
-      const { fragment } = mountTree(component(entry.props));
-      const root = fragment.firstElementChild;
-      if (root) {
-        // Preserve the markers so repeat hydration (dev reload) still resolves.
-        root.setAttribute("data-stoneware-island", name);
-        root.setAttribute("data-stoneware-id", entry.id);
-      }
-      target.replaceWith(fragment);
-    } catch (error) {
-      console.error(`[stoneware] Island "${name}" failed to hydrate.`, error);
+  try {
+    const { fragment } = mountTree(component(entry.props));
+    const root = fragment.firstElementChild;
+    if (root) {
+      // Preserve the markers so repeat hydration (dev reload) still resolves.
+      root.setAttribute("data-stoneware-island", entry.name);
+      root.setAttribute("data-stoneware-id", entry.id);
     }
+    target.replaceWith(fragment);
+  } catch (error) {
+    console.error(`[stoneware] Island "${entry.name}" failed to hydrate.`, error);
   }
 }
 

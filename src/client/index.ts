@@ -7,6 +7,7 @@
  */
 
 export { hydrate } from "./hydrate.ts";
+export { startLazyHydration } from "./lazy.ts";
 export { mountTree } from "./dom.ts";
 export type { Disposer } from "./dom.ts";
 export { signal, computed, effect, batch, untracked } from "../signals.ts";

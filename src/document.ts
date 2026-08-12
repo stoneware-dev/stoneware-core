@@ -8,6 +8,7 @@
 
 import { renderIslandPayload } from "./render.ts";
 import type { CollectedIsland } from "./render.ts";
+import { RUNTIME_CHUNK_KEY } from "./build.ts";
 import type { IslandManifest } from "./build.ts";
 
 export interface DocumentOptions {
@@ -28,8 +29,25 @@ const DOCTYPE = "<!DOCTYPE html>";
 
 export function buildDocument(options: DocumentOptions): string {
   const { html, islands, manifest } = options;
+
+  const eager = new Set(islands.filter((i) => i.strategy === "load").map((i) => i.name));
+  const lazy = islands.filter((i) => i.strategy !== "load");
+
+  // An island with no eager instance on this page has no module script, so the
+  // runtime needs its URL to fetch it when a trigger fires. One with an eager
+  // instance is already being downloaded, so listing it here would be dead
+  // weight in the HTML.
+  const chunks: Record<string, string> = {};
+  for (const island of lazy) {
+    if (eager.has(island.name)) continue;
+    chunks[island.name] = resolveChunk(island.name, manifest);
+  }
+
   const scripts =
-    renderIslandPayload(islands) + renderIslandScripts(islands, manifest) + (options.suffix ?? "");
+    renderIslandPayload(islands, chunks) +
+    renderIslandScripts(islands, manifest) +
+    renderRuntimeScript(lazy.length > 0, manifest) +
+    (options.suffix ?? "");
 
   if (isFullDocument(html)) {
     // A page that owns its whole document still gets the bundled stylesheet:
@@ -75,20 +93,48 @@ function renderIslandScripts(islands: CollectedIsland[], manifest: IslandManifes
   let out = "";
 
   for (const island of islands) {
+    // A lazily-hydrated instance is exactly the one that must not produce a
+    // script tag: the whole saving is in not fetching the chunk up front.
+    if (island.strategy !== "load") continue;
     if (seen.has(island.name)) continue;
     seen.add(island.name);
 
-    const src = manifest[island.name];
-    if (!src) {
-      throw new Error(
-        `Island "${island.name}" was rendered but has no client bundle. ` +
-          `Run the island build before serving, or restart the dev server.`,
-      );
-    }
-    out += `<script type="module" src="${Bun.escapeHTML(src)}"></script>`;
+    out += `<script type="module" src="${Bun.escapeHTML(resolveChunk(island.name, manifest))}"></script>`;
   }
 
   return out;
+}
+
+/**
+ * The lazy-hydration runtime, loaded only by pages that have a deferred island.
+ *
+ * A page whose islands are all eager never sees this tag, so adding directives
+ * to the framework costs nothing to pages that do not use them.
+ */
+function renderRuntimeScript(needed: boolean, manifest: IslandManifest): string {
+  if (!needed) return "";
+
+  const src = manifest[RUNTIME_CHUNK_KEY];
+  if (!src) {
+    throw new Error(
+      `A lazily-hydrated island was rendered but the hydration runtime is missing ` +
+        `from the island manifest. Run \`stoneware build\` again — the manifest predates ` +
+        `lazy hydration support.`,
+    );
+  }
+
+  return `<script type="module" src="${Bun.escapeHTML(src)}"></script>`;
+}
+
+function resolveChunk(name: string, manifest: IslandManifest): string {
+  const src = manifest[name];
+  if (!src) {
+    throw new Error(
+      `Island "${name}" was rendered but has no client bundle. ` +
+        `Run the island build before serving, or restart the dev server.`,
+    );
+  }
+  return src;
 }
 
 /**

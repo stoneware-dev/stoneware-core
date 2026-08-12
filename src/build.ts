@@ -88,8 +88,18 @@ export async function buildStyles(options: {
   return href;
 }
 
-/** Maps island name to the public URL of its entry chunk. */
+/**
+ * Maps island name to the public URL of its entry chunk.
+ *
+ * One reserved key rides along: `@runtime`, the lazy-hydration chunk. It lives
+ * here rather than in a file of its own because it is produced by the same
+ * build and consumed at the same moment - and an island can never collide with
+ * it, since island names come from filenames.
+ */
 export type IslandManifest = Record<string, string>;
+
+/** Manifest key holding the lazy-hydration runtime chunk. */
+export const RUNTIME_CHUNK_KEY = "@runtime";
 
 export interface BuildIslandsOptions {
   islands: IslandEntry[];
@@ -125,6 +135,13 @@ function entrySource(island: IslandEntry): string {
   ].join("\n");
 }
 
+/** Entry filename for the lazy-hydration runtime, before hashing. */
+const RUNTIME_ENTRY_NAME = "stoneware-runtime";
+
+function runtimeEntrySource(): string {
+  return `import ${JSON.stringify("stoneware/client/runtime")};\n`;
+}
+
 export async function buildIslands(options: BuildIslandsOptions): Promise<BuildIslandsResult> {
   const outDir = resolve(options.outDir);
   const entriesDir = join(outDir, "entries");
@@ -149,6 +166,13 @@ export async function buildIslands(options: BuildIslandsOptions): Promise<BuildI
     entrypoints.push(entryPath);
     entryToIsland.set(island.chunkName, island);
   }
+
+  // Built unconditionally, referenced only by pages that have a lazy island.
+  // Deciding here would mean rebuilding whenever a page changed its directives;
+  // the chunk is a few hundred bytes, so it is cheaper to always emit it.
+  const runtimeEntry = join(entriesDir, `${RUNTIME_ENTRY_NAME}.ts`);
+  await Bun.write(runtimeEntry, runtimeEntrySource());
+  entrypoints.push(runtimeEntry);
 
   const result = await Bun.build({
     entrypoints,
@@ -183,6 +207,12 @@ export async function buildIslands(options: BuildIslandsOptions): Promise<BuildI
 
     // `[name]-[hash].js` - recover the entry name by stripping the hash suffix.
     const chunkName = file.replace(/-[^-]+\.js$/, "");
+
+    if (chunkName === RUNTIME_ENTRY_NAME) {
+      manifest[RUNTIME_CHUNK_KEY] = `${CLIENT_ASSET_PREFIX}/${file}`;
+      continue;
+    }
+
     const island = entryToIsland.get(chunkName);
     if (island) manifest[island.name] = `${CLIENT_ASSET_PREFIX}/${file}`;
   }

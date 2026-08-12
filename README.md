@@ -191,6 +191,45 @@ export const subscriberCount = signal(1284);
 Import it from two different islands and both observe the same signal. The bundler hoists it into a
 shared chunk automatically.
 
+## When islands hydrate
+
+By default an island hydrates as soon as its chunk loads. A `client:*` directive at the **usage
+site** defers that — the same island can be eager on one page and lazy on another:
+
+```tsx
+<Chart />                                {/* default: on load        */}
+<Chart client:visible />                 {/* when scrolled into view */}
+<Chart client:idle />                    {/* when the browser is idle */}
+<Chart client:media="(min-width: 60rem)" /> {/* when the query matches */}
+```
+
+**A lazy island emits no `<script>` tag.** Its chunk URL travels inside the JSON payload instead, and
+a page with any deferred island loads a small scheduler that fetches the chunk when the trigger
+fires. Concretely, for a page whose islands are all `client:visible`:
+
+| | eager | `client:visible` |
+|---|---|---|
+| On load | scheduler + runtime + every island chunk | **scheduler only, ~1 kB gzip** |
+| On scroll | — | runtime + that island's chunk |
+
+The fetch is a same-origin dynamic `import()`, so it runs under the default `script-src 'self'` with
+no nonce and no inline script.
+
+Details worth knowing:
+
+- `client:visible` starts hydrating **200 px before** the element reaches the viewport, so it is
+  usually ready by the time it is on screen.
+- Every trigger **degrades to hydrating immediately** if the API behind it is missing. A browser with
+  no `IntersectionObserver` gets a working page slightly sooner than intended, never a dead button.
+- The directive is stripped before the island runs — an island never sees `client:visible` in its
+  props and needs no awareness of any of this.
+- Two directives on one usage is an error rather than a precedence rule to memorize.
+- A directive on a plain element is an error too: only islands hydrate, and silently rendering it as
+  an attribute would look correct while never working.
+
+**A page with no lazy island is byte-for-byte what it was before.** The scheduler is not loaded, and
+the payload carries no strategy field.
+
 ## Server actions and CSRF
 
 Any exported HTTP method handler in `routes/api/` is a server action:
@@ -449,9 +488,9 @@ answer to framework behaviour only, never to editorial changes in someone's cont
 
 ## Status
 
-v0.1. Deliberately **not** included yet: streaming SSR, resumability, lazy hydration directives,
-multi-framework islands, edge/serverless targets, and a local-first data layer. Each was considered
-and deferred - see `CLAUDE.md`.
+v0.1. Deliberately **not** included yet: streaming SSR, resumability, multi-framework islands,
+edge/serverless targets, and a local-first data layer. Each was considered and deferred - see
+`CLAUDE.md`.
 
 ## License
 
