@@ -7,7 +7,7 @@
  * JavaScript, which is the point of the framework it is documenting.
  */
 
-import type { Child } from "sinter";
+import type { Child } from "stoneware";
 
 export type Language = "tsx" | "ts" | "sh" | "txt";
 

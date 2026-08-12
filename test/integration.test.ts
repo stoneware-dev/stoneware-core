@@ -10,12 +10,12 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { createApp } from "../src/server.ts";
-import type { SinterApp } from "../src/server.ts";
+import type { StonewareApp } from "../src/server.ts";
 
 const FIXTURE_ROOT = join(import.meta.dir, "fixture");
 const SECRET = "integration-test-secret-0123456789";
 
-let app: SinterApp;
+let app: StonewareApp;
 
 beforeAll(async () => {
   app = await createApp({ root: FIXTURE_ROOT, csrf: { secret: SECRET } }, { dev: true });
@@ -68,14 +68,14 @@ describe("milestone 1 - static SSR", () => {
   });
 
   test("refuses path traversal out of the asset directories", async () => {
-    expect((await get("/_sinter/..%2f..%2fpackage.json")).status).toBe(404);
+    expect((await get("/_stoneware/..%2f..%2fpackage.json")).status).toBe(404);
   });
 });
 
 describe("milestone 2 - islands", () => {
   test("islands are server-rendered with real content, not placeholders", async () => {
     const html = await getHTML("/");
-    expect(html).toContain('data-sinter-island="Counter"');
+    expect(html).toContain('data-stoneware-island="Counter"');
     expect(html).toContain("Clicked 0 times");
     expect(html).toContain("<strong>7</strong> total");
   });
@@ -88,7 +88,7 @@ describe("milestone 2 - islands", () => {
 
     expect(sources).toHaveLength(2);
     expect(new Set(sources).size).toBe(2);
-    for (const source of sources) expect(source.startsWith("/_sinter/")).toBe(true);
+    for (const source of sources) expect(source.startsWith("/_stoneware/")).toBe(true);
   });
 
   test("built island chunks are served", async () => {
@@ -100,7 +100,7 @@ describe("milestone 2 - islands", () => {
   test("a page with no islands ships no JavaScript at all", async () => {
     const html = await getHTML("/plain");
     expect(html).not.toContain("<script");
-    expect(html).not.toContain("/_sinter/");
+    expect(html).not.toContain("/_stoneware/");
   });
 });
 
@@ -108,7 +108,7 @@ describe("milestone 3 - signals", () => {
   test("island props reach the client as escaped JSON", async () => {
     const html = await getHTML("/");
     const payload = html.match(
-      /<script type="application\/json" id="sinter-islands">(.*?)<\/script>/s,
+      /<script type="application\/json" id="stoneware-islands">(.*?)<\/script>/s,
     )?.[1];
 
     expect(payload).toBeDefined();
@@ -224,7 +224,7 @@ describe("milestone 5 - security defaults", () => {
   test("the hydration payload cannot break out of its element", async () => {
     const html = await getHTML("/");
     const payload = html.match(
-      /<script type="application\/json" id="sinter-islands">(.*?)<\/script>/s,
+      /<script type="application\/json" id="stoneware-islands">(.*?)<\/script>/s,
     )![1]!;
     expect(payload).not.toContain("<");
     expect(payload).not.toContain(">");

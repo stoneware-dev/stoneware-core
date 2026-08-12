@@ -6,7 +6,7 @@
  * never re-run and nothing is diffed.
  */
 
-import { signal } from "sinter/signals";
+import { signal } from "stoneware/signals";
 
 const count = signal(0);
 

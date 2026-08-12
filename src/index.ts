@@ -1,5 +1,5 @@
 /**
- * Sinter's public API.
+ * Stoneware's public API.
  *
  * Server-first by construction: nothing exported here reaches the browser
  * unless it is imported from a file under `islands/`.
@@ -19,8 +19,8 @@ export { discoverIslands, loadIslands, buildIslandRegistry } from "./islands.ts"
 export { buildDocument } from "./document.ts";
 
 export type { Child, Component, Props, VNode, RawHTML } from "./types.ts";
-export type { SinterConfig, ResolvedConfig, CSRFConfig } from "./config.ts";
+export type { StonewareConfig, ResolvedConfig, CSRFConfig } from "./config.ts";
 export type { PageProps, ActionContext, ActionHandler, MatchedRoute } from "./router.ts";
-export type { SinterApp, ServeResult } from "./server.ts";
+export type { StonewareApp, ServeResult } from "./server.ts";
 export type { IslandManifest } from "./build.ts";
 export type { RenderResult, CollectedIsland } from "./render.ts";

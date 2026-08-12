@@ -1,5 +1,5 @@
-import { Form, csrfToken } from "sinter";
-import type { PageProps } from "sinter";
+import { Form, csrfToken } from "stoneware";
+import type { PageProps } from "stoneware";
 import Badge from "../islands/Badge.tsx";
 import Counter from "../islands/Counter.tsx";
 

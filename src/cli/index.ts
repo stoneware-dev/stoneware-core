@@ -1,18 +1,18 @@
 #!/usr/bin/env bun
 /**
- * The `sinter` CLI (CLAUDE.md §13).
+ * The `stoneware` CLI (CLAUDE.md §13).
  */
 
 import { resolve } from "node:path";
 import { build, describeBuild } from "./build.ts";
 import { dev } from "./dev.ts";
 
-const USAGE = `sinter - a Bun-native, server-first web framework
+const USAGE = `stoneware - a Bun-native, server-first web framework
 
 Usage
-  sinter dev     [--root <dir>] [--port <n>]   Start the dev server with hot reload
-  sinter build   [--root <dir>]                Production build (server + island bundles)
-  sinter start   [--root <dir>] [--port <n>]   Run the production server bundle
+  stoneware dev     [--root <dir>] [--port <n>]   Start the dev server with hot reload
+  stoneware build   [--root <dir>]                Production build (server + island bundles)
+  stoneware start   [--root <dir>] [--port <n>]   Run the production server bundle
 
 Options
   --root <dir>   Project directory (default: current directory)
@@ -49,7 +49,7 @@ async function main(): Promise<void> {
     process.exit(args.command === undefined && !args.help ? 1 : 0);
   }
 
-  // The CLI flag wins over sinter.config.ts, which wins over the default.
+  // The CLI flag wins over stoneware.config.ts, which wins over the default.
   if (args.port) process.env.PORT = args.port;
 
   switch (args.command) {
@@ -61,15 +61,15 @@ async function main(): Promise<void> {
       const started = performance.now();
       const result = await build(args.root);
       const elapsed = Math.round(performance.now() - started);
-      console.log(`[sinter] build complete in ${elapsed}ms`);
+      console.log(`[stoneware] build complete in ${elapsed}ms`);
       console.log(describeBuild(result, args.root));
       break;
     }
 
     case "start": {
-      const bundle = resolve(args.root, ".sinter", "server.js");
+      const bundle = resolve(args.root, ".stoneware", "server.js");
       if (!(await Bun.file(bundle).exists())) {
-        console.error(`[sinter] No production build found at ${bundle}. Run \`sinter build\` first.`);
+        console.error(`[stoneware] No production build found at ${bundle}. Run \`stoneware build\` first.`);
         process.exit(1);
       }
       await import(Bun.pathToFileURL(bundle).href);
@@ -77,7 +77,7 @@ async function main(): Promise<void> {
     }
 
     default:
-      console.error(`[sinter] Unknown command: ${args.command}\n`);
+      console.error(`[stoneware] Unknown command: ${args.command}\n`);
       console.log(USAGE);
       process.exit(1);
   }

@@ -1,5 +1,5 @@
 /**
- * Browser entry point for Sinter's client runtime.
+ * Browser entry point for Stoneware's client runtime.
  *
  * Generated island entries import from here. Keeping the surface this small
  * matters: everything reachable from this module ends up in the shared client

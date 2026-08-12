@@ -1,7 +1,7 @@
 /**
  * The `<Form>` helper.
  *
- * Sinter apps use this instead of a raw `<form>` so the CSRF token is injected
+ * Stoneware apps use this instead of a raw `<form>` so the CSRF token is injected
  * without anyone having to remember it (CLAUDE.md §9). The server verifies the
  * token on the way back in regardless, so a raw `<form>` does not silently skip
  * protection - it simply fails.

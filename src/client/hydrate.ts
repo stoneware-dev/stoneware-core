@@ -19,7 +19,7 @@ interface IslandPayloadEntry {
   props: Props;
 }
 
-const PAYLOAD_ELEMENT_ID = "sinter-islands";
+const PAYLOAD_ELEMENT_ID = "stoneware-islands";
 
 // Parsing once per page is the point, but the cache is keyed on the payload
 // element itself rather than a plain flag: if the document is replaced - a dev
@@ -41,7 +41,7 @@ function readPayload(): IslandPayloadEntry[] {
     const parsed = JSON.parse(element.textContent);
     if (Array.isArray(parsed)) cachedPayload = parsed;
   } catch (error) {
-    console.error("[sinter] Island payload is not valid JSON; islands will not hydrate.", error);
+    console.error("[stoneware] Island payload is not valid JSON; islands will not hydrate.", error);
   }
   return cachedPayload;
 }
@@ -58,9 +58,9 @@ export function hydrate(name: string, component: Component<any>): void {
   for (const entry of readPayload()) {
     if (entry.name !== name) continue;
 
-    const target = document.querySelector(`[data-sinter-id="${CSS.escape(entry.id)}"]`);
+    const target = document.querySelector(`[data-stoneware-id="${CSS.escape(entry.id)}"]`);
     if (!target) {
-      console.warn(`[sinter] No server-rendered element found for island "${name}" (${entry.id}).`);
+      console.warn(`[stoneware] No server-rendered element found for island "${name}" (${entry.id}).`);
       continue;
     }
 
@@ -69,12 +69,12 @@ export function hydrate(name: string, component: Component<any>): void {
       const root = fragment.firstElementChild;
       if (root) {
         // Preserve the markers so repeat hydration (dev reload) still resolves.
-        root.setAttribute("data-sinter-island", name);
-        root.setAttribute("data-sinter-id", entry.id);
+        root.setAttribute("data-stoneware-island", name);
+        root.setAttribute("data-stoneware-id", entry.id);
       }
       target.replaceWith(fragment);
     } catch (error) {
-      console.error(`[sinter] Island "${name}" failed to hydrate.`, error);
+      console.error(`[stoneware] Island "${name}" failed to hydrate.`, error);
     }
   }
 }

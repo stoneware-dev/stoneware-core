@@ -1,5 +1,5 @@
-import { raw } from "sinter";
-import type { PageProps } from "sinter";
+import { raw } from "stoneware";
+import type { PageProps } from "stoneware";
 
 /** No islands: this page must ship zero JavaScript. */
 export default function Plain(_props: PageProps) {

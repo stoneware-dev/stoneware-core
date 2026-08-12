@@ -28,11 +28,11 @@ export const DOCS: DocPage[] = [
   {
     slug: "why",
     title: "What it solves",
-    summary: "The specific problems Sinter exists for — and the ones it does not.",
+    summary: "The specific problems Stoneware exists for — and the ones it does not.",
     blocks: [
       {
         kind: "p",
-        text: "The web ships a lot of JavaScript to sites that do not need it. Sinter makes HTML the default and JavaScript the exception.",
+        text: "The web ships a lot of JavaScript to sites that do not need it. Stoneware makes HTML the default and JavaScript the exception.",
       },
       {
         kind: "figure",
@@ -49,7 +49,7 @@ export const DOCS: DocPage[] = [
       },
       {
         kind: "p",
-        text: "Sinter is not a general-purpose replacement for anything. It was built for one shape of project: content-heavy, SEO-sensitive sites with a handful of interactive widgets. Within that shape, these are the problems it takes seriously.",
+        text: "Stoneware is not a general-purpose replacement for anything. It was built for one shape of project: content-heavy, SEO-sensitive sites with a handful of interactive widgets. Within that shape, these are the problems it takes seriously.",
       },
 
       { kind: "h2", text: "1. You ship a runtime to render a document" },
@@ -59,7 +59,7 @@ export const DOCS: DocPage[] = [
       },
       {
         kind: "p",
-        text: "In Sinter a page with no islands ships no JavaScript. Not a small runtime, not a hydration shim — zero bytes, no script tag at all. That is asserted by the test suite, not just intended.",
+        text: "In Stoneware a page with no islands ships no JavaScript. Not a small runtime, not a hydration shim — zero bytes, no script tag at all. That is asserted by the test suite, not just intended.",
       },
       {
         kind: "figure",
@@ -79,7 +79,7 @@ export const DOCS: DocPage[] = [
       },
       {
         kind: "p",
-        text: "Sinter puts the boundary on the filesystem. Files under islands/ are bundler entry points; files under routes/ are never handed to the bundler at all. Server-only code does not stay server-only because a heuristic classified it correctly — it stays server-only because nothing can carry it across.",
+        text: "Stoneware puts the boundary on the filesystem. Files under islands/ are bundler entry points; files under routes/ are never handed to the bundler at all. Server-only code does not stay server-only because a heuristic classified it correctly — it stays server-only because nothing can carry it across.",
       },
       {
         kind: "quote",
@@ -104,7 +104,7 @@ export const DOCS: DocPage[] = [
       },
       {
         kind: "p",
-        text: "The header is the same markup on every page and will never change after it is painted. Sinter does not hydrate it, because there is nothing there to hydrate — it is a string the server produced, and it stays that way.",
+        text: "The header is the same markup on every page and will never change after it is painted. Stoneware does not hydrate it, because there is nothing there to hydrate — it is a string the server produced, and it stays that way.",
       },
 
       { kind: "h2", text: "4. The component model costs more than it returns here" },
@@ -114,7 +114,7 @@ export const DOCS: DocPage[] = [
       },
       {
         kind: "p",
-        text: "A Sinter template is a plain function, called once per request, on the server. Nothing to memoize, no render loop to reason about, no rules-of-hooks lint plugin. Reactivity exists only inside islands, where it earns its keep — and an update writes to one text node rather than re-running a tree.",
+        text: "A Stoneware template is a plain function, called once per request, on the server. Nothing to memoize, no render loop to reason about, no rules-of-hooks lint plugin. Reactivity exists only inside islands, where it earns its keep — and an update writes to one text node rather than re-running a tree.",
       },
 
       { kind: "h2", text: "5. Security is opt-in, and CSP is what everyone skips" },
@@ -127,7 +127,7 @@ export const DOCS: DocPage[] = [
         items: [
           "Escaping happens in the renderer. There is no global switch to turn it off.",
           "CSRF is verified in the request pipeline before any handler runs, on every mutating request. A raw <form> does not skip protection — it fails.",
-          "A strict CSP ships by default and works, because Sinter never emits inline executable script. No nonces to plumb.",
+          "A strict CSP ships by default and works, because Stoneware never emits inline executable script. No nonces to plumb.",
           "A production build refuses to start without a CSRF secret rather than falling back to something that appears to work.",
         ],
       },
@@ -139,7 +139,7 @@ export const DOCS: DocPage[] = [
       { kind: "h2", text: "6. Hydration mismatches" },
       {
         kind: "p",
-        text: "Reconciling a client tree against server markup produces a whole category of bug that only appears in production, usually as a warning nobody can reproduce. Sinter does not reconcile: it builds the island's tree and replaces the marked element outright. There is nothing to mismatch.",
+        text: "Reconciling a client tree against server markup produces a whole category of bug that only appears in production, usually as a warning nobody can reproduce. Stoneware does not reconcile: it builds the island's tree and replaces the marked element outright. There is nothing to mismatch.",
       },
       {
         kind: "p",
@@ -153,7 +153,7 @@ export const DOCS: DocPage[] = [
       },
       {
         kind: "p",
-        text: "Sinter has one runtime dependency. Serving, bundling, escaping, CSRF tokens, routing, .env loading, and the test runner are all Bun's own APIs. That is a deliberate constraint, not a coincidence: if Bun ships it, Sinter does not add a package that reimplements it.",
+        text: "Stoneware has one runtime dependency. Serving, bundling, escaping, CSRF tokens, routing, .env loading, and the test runner are all Bun's own APIs. That is a deliberate constraint, not a coincidence: if Bun ships it, Stoneware does not add a package that reimplements it.",
       },
 
       { kind: "h2", text: "What that looks like on a real site" },
@@ -181,7 +181,7 @@ export const DOCS: DocPage[] = [
       { kind: "h2", text: "What it does not solve" },
       {
         kind: "p",
-        text: "Worth stating plainly, because a framework that claims everything is useful for nothing. Sinter has nothing to say about databases, authentication, offline support, realtime collaboration, or large-scale client state. It is a rendering and routing layer with sensible security defaults, and that is the whole of it.",
+        text: "Worth stating plainly, because a framework that claims everything is useful for nothing. Stoneware has nothing to say about databases, authentication, offline support, realtime collaboration, or large-scale client state. It is a rendering and routing layer with sensible security defaults, and that is the whole of it.",
       },
       {
         kind: "p",
@@ -191,15 +191,15 @@ export const DOCS: DocPage[] = [
       { kind: "h2", text: "When not to use it" },
       {
         kind: "p",
-        text: "The fastest way to be disappointed by Sinter is to bring it to a problem it was not built for.",
+        text: "The fastest way to be disappointed by Stoneware is to bring it to a problem it was not built for.",
       },
       {
         kind: "list",
         items: [
           "Genuinely app-like UI — a dashboard, an editor, anything with heavy shared client state. Use a SPA framework; that is what they are good at.",
-          "You need client-side routing. Sinter does full page loads.",
+          "You need client-side routing. Stoneware does full page loads.",
           "You need streaming SSR, resumability, or partial rendering. Deliberately deferred for v0.1.",
-          "You are not on Bun. Sinter is Bun-native by design, not Node-compatible-via-Bun.",
+          "You are not on Bun. Stoneware is Bun-native by design, not Node-compatible-via-Bun.",
           "You need a large plugin ecosystem. This is v0.1; there isn't one.",
         ],
       },
@@ -223,7 +223,7 @@ export const DOCS: DocPage[] = [
         kind: "code",
         language: "sh",
         label: "terminal",
-        text: `bunx create-sinter my-site   # npx create-sinter my-site also works
+        text: `bunx create-stoneware my-site   # npx create-stoneware my-site also works
 cd my-site
 bun install
 bun run dev`,
@@ -236,7 +236,7 @@ bun run dev`,
           "islands/ — interactive components. The only place client JS originates.",
           "lib/ — behavior functions and shared utilities.",
           "public/ — static assets, served as-is.",
-          "sinter.config.ts — port, CSP, CSRF settings.",
+          "stoneware.config.ts — port, CSP, CSRF settings.",
         ],
       },
       {
@@ -247,7 +247,7 @@ bun run dev`,
       {
         kind: "code",
         label: "routes/index.tsx",
-        text: `import type { PageProps } from "sinter";
+        text: `import type { PageProps } from "stoneware";
 
 export default function Home({ params }: PageProps) {
   return <h1>It renders on the server</h1>;
@@ -263,7 +263,7 @@ export default function Home({ params }: PageProps) {
   {
     slug: "project-structure",
     title: "What gets generated",
-    summary: "Every file create-sinter writes, what it is for, and what a build adds.",
+    summary: "Every file create-stoneware writes, what it is for, and what a build adds.",
     blocks: [
       {
         kind: "p",
@@ -271,7 +271,7 @@ export default function Home({ params }: PageProps) {
       },
       {
         kind: "figure",
-        label: "bunx create-sinter my-site",
+        label: "bunx create-stoneware my-site",
         text: `my-site/
 │
 ├── routes/                    Server-only. Never ships JavaScript.
@@ -286,13 +286,13 @@ export default function Home({ params }: PageProps) {
 ├── public/                    Served as-is, at the URL root.
 │   └── styles.css             -> GET /styles.css
 │
-├── sinter.config.ts             Port, CSP override, CSRF settings.
-├── tsconfig.json              jsx: "react-jsx", jsxImportSource: "sinter"
+├── stoneware.config.ts             Port, CSP override, CSRF settings.
+├── tsconfig.json              jsx: "react-jsx", jsxImportSource: "stoneware"
 ├── package.json               scripts: dev / build / start
 │
-├── .env                       SINTER_CSRF_SECRET, generated unique. Gitignored.
+├── .env                       STONEWARE_CSRF_SECRET, generated unique. Gitignored.
 ├── .env.example               Tracked template, no value.
-└── .gitignore                 node_modules/ .sinter/ .env`,
+└── .gitignore                 node_modules/ .stoneware/ .env`,
       },
       { kind: "h2", text: "The two directories that matter" },
       {
@@ -319,20 +319,20 @@ export default function Home({ params }: PageProps) {
       { kind: "h2", text: "What a build adds" },
       {
         kind: "p",
-        text: "sinter build writes everything into .sinter/, which is gitignored. Deleting it is always safe.",
+        text: "stoneware build writes everything into .stoneware/, which is gitignored. Deleting it is always safe.",
       },
       {
         kind: "figure",
-        label: "sinter build",
-        text: `my-site/.sinter/
+        label: "stoneware build",
+        text: `my-site/.stoneware/
 │
 ├── server.js               One bundle: framework + every route + every island.
 │                           Routes are inlined, so no transpiling per request.
 │
 ├── islands.json            Island name -> public chunk URL.
-│                           { "Counter": "/_sinter/Counter-jzp1gax8.js" }
+│                           { "Counter": "/_stoneware/Counter-jzp1gax8.js" }
 │
-├── static/                 Served under /_sinter/*, immutable (content-hashed).
+├── static/                 Served under /_stoneware/*, immutable (content-hashed).
 │   ├── Counter-jzp1gax8.js     One entry chunk per island.
 │   └── chunk-gcapcpwn.js       Shared runtime: signals + hydrate.
 │
@@ -356,7 +356,7 @@ export default function Home({ params }: PageProps) {
     blocks: [
       {
         kind: "p",
-        text: "Sinter is small enough to hold in your head. This page is the whole of it: one request pipeline, one render pass, and one hydration step.",
+        text: "Stoneware is small enough to hold in your head. This page is the whole of it: one request pipeline, one render pass, and one hydration step.",
       },
       { kind: "h2", text: "The request pipeline" },
       {
@@ -368,7 +368,7 @@ export default function Home({ params }: PageProps) {
         label: "one request, start to finish",
         text: `  Request
      │
-     ├─ /_sinter/*  ─────────────────►  built island chunk        (Bun.file)
+     ├─ /_stoneware/*  ─────────────────►  built island chunk        (Bun.file)
      │
      ├─ matches public/  ──────────►  static asset              (Bun.file)
      │
@@ -431,16 +431,16 @@ export default function Home({ params }: PageProps) {
         language: "txt",
         label: "response body, abridged",
         text: `<button class="counter"
-        data-sinter-island="LiveCounter"    <-- which island
-        data-sinter-id="sinter-1">            <-- which instance
+        data-stoneware-island="LiveCounter"    <-- which island
+        data-stoneware-id="stoneware-1">            <-- which instance
   fired <b>0</b> times
 </button>
 
-<script type="application/json" id="sinter-islands">
-  [{"name":"LiveCounter","id":"sinter-1","props":{}}]
+<script type="application/json" id="stoneware-islands">
+  [{"name":"LiveCounter","id":"stoneware-1","props":{}}]
 </script>
 
-<script type="module" src="/_sinter/LiveCounter-6dhtkfqt.js"></script>`,
+<script type="module" src="/_stoneware/LiveCounter-6dhtkfqt.js"></script>`,
       },
       {
         kind: "p",
@@ -456,7 +456,7 @@ export default function Home({ params }: PageProps) {
         label: "server output, then the same DOM after hydration",
         text: `  BEFORE                              AFTER
   ──────                              ─────
-  <button data-sinter-id="sinter-1">      <button data-sinter-id="sinter-1">
+  <button data-stoneware-id="stoneware-1">      <button data-stoneware-id="stoneware-1">
     "fired "                            "fired "        ◄─ static text
     <b>                                 <b>
       "0"                                 "0"  ◄────────── Text node, now
@@ -480,7 +480,7 @@ export default function Home({ params }: PageProps) {
         label: "the client runtime, end to end",
         text: `  island bundle loads
      │
-     ├─ read #sinter-islands  ──► parsed as data, never evaluated
+     ├─ read #stoneware-islands  ──► parsed as data, never evaluated
      │
      ├─ for each { name, id, props } matching this island:
      │      │
@@ -492,14 +492,14 @@ export default function Home({ params }: PageProps) {
      │      │      ├─ style object      ──► CSSOM (CSP-safe)
      │      │      └─ onClick           ──► addEventListener
      │      │
-     │      └─ querySelector([data-sinter-id]).replaceWith(tree)
+     │      └─ querySelector([data-stoneware-id]).replaceWith(tree)
      │
      └─ done. No further work until a signal changes.`,
       },
       { kind: "h2", text: "Why there is no reconciler" },
       {
         kind: "p",
-        text: "A virtual DOM earns its cost when you re-render a whole tree and need to find what changed. Sinter never re-renders a tree, so there is nothing to compare. The dependency graph that would justify a reconciler is already provided by signals, which is why reusing them rather than writing one is the project's firmest scope boundary.",
+        text: "A virtual DOM earns its cost when you re-render a whole tree and need to find what changed. Stoneware never re-renders a tree, so there is nothing to compare. The dependency graph that would justify a reconciler is already provided by signals, which is why reusing them rather than writing one is the project's firmest scope boundary.",
       },
     ],
   },
@@ -530,7 +530,7 @@ routes/api/subscribe.ts   ->  /api/subscribe`,
       {
         kind: "code",
         label: "routes/blog/[slug].tsx",
-        text: `import type { PageProps } from "sinter";
+        text: `import type { PageProps } from "stoneware";
 import { getPost } from "../../lib/posts.ts";
 
 export default function Post({ params }: PageProps) {
@@ -564,7 +564,7 @@ export default function Post({ params }: PageProps) {
       {
         kind: "code",
         label: "islands/Counter.tsx",
-        text: `import { signal } from "sinter/signals";
+        text: `import { signal } from "stoneware/signals";
 
 const count = signal(0);
 
@@ -588,7 +588,7 @@ export default function Counter() {
       },
       {
         kind: "quote",
-        text: "An island must render exactly one HTML element at its root, because that element carries the marker. Sinter raises an explicit error rather than mis-hydrating.",
+        text: "An island must render exactly one HTML element at its root, because that element carries the marker. Stoneware raises an explicit error rather than mis-hydrating.",
       },
       { kind: "h2", text: "Updates without a reconciler" },
       {
@@ -603,7 +603,7 @@ export default function Counter() {
       {
         kind: "code",
         label: "lib/state.ts",
-        text: `import { signal } from "sinter/signals";
+        text: `import { signal } from "stoneware/signals";
 
 export const subscriberCount = signal(1284);`,
       },
@@ -622,7 +622,7 @@ export const subscriberCount = signal(1284);`,
       {
         kind: "code",
         label: "routes/api/subscribe.ts",
-        text: `import type { ActionContext } from "sinter";
+        text: `import type { ActionContext } from "stoneware";
 
 export async function POST({ request }: ActionContext) {
   const form = await request.formData();
@@ -639,7 +639,7 @@ export async function POST({ request }: ActionContext) {
       {
         kind: "code",
         label: "routes/index.tsx",
-        text: `import { Form } from "sinter";
+        text: `import { Form } from "stoneware";
 
 <Form action="/api/subscribe">
   <input type="email" name="email" required />
@@ -683,7 +683,7 @@ export async function POST({ request }: ActionContext) {
       { kind: "h2", text: "Content-Security-Policy" },
       {
         kind: "p",
-        text: "A restrictive policy ships by default: script-src 'self', no unsafe-inline, no unsafe-eval. Sinter never emits inline executable script, so no nonce plumbing is needed to satisfy it.",
+        text: "A restrictive policy ships by default: script-src 'self', no unsafe-inline, no unsafe-eval. Stoneware never emits inline executable script, so no nonce plumbing is needed to satisfy it.",
       },
       {
         kind: "quote",
@@ -719,9 +719,9 @@ export async function POST({ request }: ActionContext) {
         kind: "code",
         language: "sh",
         label: "terminal",
-        text: `sinter dev     # dev server with hot reload
-sinter build   # production build
-sinter start   # run the production server bundle`,
+        text: `stoneware dev     # dev server with hot reload
+stoneware build   # production build
+stoneware start   # run the production server bundle`,
       },
       { kind: "h2", text: "Development" },
       {
@@ -744,7 +744,7 @@ sinter start   # run the production server bundle`,
       { kind: "h2", text: "Environment" },
       {
         kind: "p",
-        text: "Bun reads .env natively, so Sinter has no dotenv dependency. create-sinter generates a .env with a unique SINTER_CSRF_SECRET and gitignores it, leaving .env.example as the tracked template. A real environment variable beats .env.local, which beats .env.",
+        text: "Bun reads .env natively, so Stoneware has no dotenv dependency. create-stoneware generates a .env with a unique STONEWARE_CSRF_SECRET and gitignores it, leaving .env.example as the tracked template. A real environment variable beats .env.local, which beats .env.",
       },
     ],
   },

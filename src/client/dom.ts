@@ -179,7 +179,7 @@ function setAttribute(element: Element, name: string, value: unknown): void {
     return;
   }
 
-  // Styles go through the CSSOM rather than a style="" attribute. Under Sinter's
+  // Styles go through the CSSOM rather than a style="" attribute. Under Stoneware's
   // default CSP (`style-src 'self'`, no unsafe-inline) writing that attribute is
   // blocked, but CSSOM mutation is not governed by CSP at all - so a
   // signal-driven style works on a strict policy with no exception needed.

@@ -1,5 +1,5 @@
 {
-  "name": "sinter",
+  "name": "stoneware",
   "version": "0.1.0",
   "description": "Bun-native, server-first web framework where HTML is the default and JavaScript is opt-in. Islands for interactivity, signals inside islands, security on before you configure anything.",
   "license": "MIT",
@@ -7,7 +7,7 @@
   "module": "src/index.ts",
   "types": "src/index.ts",
   "bin": {
-    "sinter": "bin/sinter.mjs"
+    "stoneware": "bin/stoneware.mjs"
   },
   "exports": {
     ".": "./src/index.ts",
@@ -43,11 +43,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/RANJEETJ06/Sinter.git"
+    "url": "git+https://github.com/RANJEETJ06/Stoneware.git"
   },
-  "homepage": "https://github.com/RANJEETJ06/Sinter#readme",
+  "homepage": "https://github.com/RANJEETJ06/Stoneware#readme",
   "bugs": {
-    "url": "https://github.com/RANJEETJ06/Sinter/issues"
+    "url": "https://github.com/RANJEETJ06/Stoneware/issues"
   },
   "keywords": [
     "bun",

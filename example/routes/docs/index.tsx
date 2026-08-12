@@ -1,11 +1,11 @@
-import type { PageProps } from "sinter";
+import type { PageProps } from "stoneware";
 import { Layout } from "../../lib/Layout.tsx";
 import { DOCS } from "../../lib/docs.ts";
 
 export default function DocsIndex(_props: PageProps) {
   return (
     <Layout
-      title="Documentation — Sinter"
+      title="Documentation — Stoneware"
       description="Guides for routing, islands, server actions, security defaults, and the CLI."
       section="docs"
     >
@@ -15,7 +15,7 @@ export default function DocsIndex(_props: PageProps) {
           {/* Counted rather than written out, so it cannot drift from DOCS. */}
           <h1>Everything, in {DOCS.length} pages</h1>
           <p class="hero__lede">
-            Sinter is small on purpose. If a page here feels long, that is a bug in the page rather
+            Stoneware is small on purpose. If a page here feels long, that is a bug in the page rather
             than a sign of depth.
           </p>
         </section>

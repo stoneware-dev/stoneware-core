@@ -8,13 +8,13 @@
 import type { Signal } from "@preact/signals-core";
 
 /** Brand identifying an object produced by the JSX runtime. */
-export const VNODE = Symbol.for("sinter.vnode");
+export const VNODE = Symbol.for("stoneware.vnode");
 
 /** Brand identifying pre-trusted HTML produced by `raw()`. */
-export const RAW = Symbol.for("sinter.raw");
+export const RAW = Symbol.for("stoneware.raw");
 
 /** `<>...</>` - renders children with no surrounding element. */
-export const Fragment = Symbol.for("sinter.fragment");
+export const Fragment = Symbol.for("stoneware.fragment");
 
 export interface RawHTML {
   readonly [RAW]: true;

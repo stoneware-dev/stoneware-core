@@ -1,9 +1,13 @@
-# CLAUDE.md - Bun-Native SSR Framework ("Sinter")
+# CLAUDE.md - Bun-Native SSR Framework ("Stoneware")
 
-> Name settled: **Sinter**. npm packages `sinter` (framework) and `create-sinter`
-> (scaffolder). Originally drafted as "Kiln"; that name was already taken on npm.
-> Sintering — fusing particles into a solid mass with heat, without melting them —
-> is what the framework does to templates at build/server time.
+> Name settled: **Stoneware**. npm packages `stoneware` (framework) and `create-stoneware`
+> (scaffolder).
+>
+> Naming history: drafted as "Kiln" (taken on npm), then "Sinter" (rejected by npm's
+> typosquat filter as too close to `sonner`). Stoneware is clay fired until it
+> vitrifies into a single dense body — what the framework does to templates at
+> build/server time — and it was already the documentation site's design language
+> ("celadon on stoneware"). Verified to have zero packages within one edit.
 
 ## 1. What this is
 
@@ -54,7 +58,7 @@ If a task seems to require one of these, stop and flag it rather than building i
 |-----------------------|------------------------------------------------------------|
 | Runtime                | Bun (latest stable)                                        |
 | Language                | TypeScript, native Bun transpilation, no separate tsconfig gymnastics |
-| Template syntax         | `.sinter.tsx` - JSX syntax, function-only, no class/hook APIs |
+| Template syntax         | `.stoneware.tsx` - JSX syntax, function-only, no class/hook APIs |
 | Reactivity (islands only) | `@preact/signals-core` (small, MIT, battle-tested)      |
 | HTTP server              | `Bun.serve()`                                              |
 | Bundler                   | `Bun.build()` - separate server bundle and per-island client bundles |
@@ -68,15 +72,15 @@ If a task seems to require one of these, stop and flag it rather than building i
 ```
 my-site/
   routes/                 # file-based routing, server-only by default
-    index.sinter.tsx
-    blog/[slug].sinter.tsx
+    index.stoneware.tsx
+    blog/[slug].stoneware.tsx
     api/subscribe.ts       # server action / API route
   islands/                 # ONLY place client JS is allowed to originate
-    Counter.sinter.tsx
-    NewsletterForm.sinter.tsx
+    Counter.stoneware.tsx
+    NewsletterForm.stoneware.tsx
   lib/                       # behavior functions (non-UI logic), shared utils
   public/                     # static assets, served as-is
-  sinter.config.ts                # framework config (port, csp, etc.)
+  stoneware.config.ts                # framework config (port, csp, etc.)
 ```
 
 Convention mirrors Fresh's `routes/` vs `islands/` split: if it's in `islands/`, it hydrates. If it's
@@ -84,7 +88,7 @@ in `routes/`, it's server-only HTML, no exceptions, no per-file directive needed
 
 ## 6. Template syntax & compilation
 
-- Templates are `.sinter.tsx` files exporting a default function: `(props) => JSX.Element`.
+- Templates are `.stoneware.tsx` files exporting a default function: `(props) => JSX.Element`.
 - No hooks. No lifecycle methods. State that needs to be reactive on the client must live in an
   `islands/` file and use signals explicitly - plain functions elsewhere are pure render functions,
   called once per request on the server.
@@ -97,8 +101,8 @@ in `routes/`, it's server-only HTML, no exceptions, no per-file directive needed
 ## 7. Routing
 
 - File-based, mirrors Next.js/Astro conventions developers already know (lowest-friction choice):
-  - `routes/index.sinter.tsx` → `/`
-  - `routes/blog/[slug].sinter.tsx` → `/blog/:slug`
+  - `routes/index.stoneware.tsx` → `/`
+  - `routes/blog/[slug].stoneware.tsx` → `/blog/:slug`
   - `routes/api/*.ts` → API/action routes, no HTML rendering, exports `POST`/`GET`/etc. handlers
 - Router resolves the request, calls the matched template function with `{ params, request }`, gets
   back JSX, renders to an HTML string, returns via `Bun.serve()`.
@@ -112,8 +116,8 @@ in `routes/`, it's server-only HTML, no exceptions, no per-file directive needed
      are a fast-follow, not launch-blocking).
 - Inside an island, state is declared with signals:
   ```tsx
-  // islands/Counter.sinter.tsx
-  import { signal } from "@sinter/signals"; // thin re-export of @preact/signals-core
+  // islands/Counter.stoneware.tsx
+  import { signal } from "@stoneware/signals"; // thin re-export of @preact/signals-core
 
   const count = signal(0);
 
@@ -140,15 +144,15 @@ in `routes/`, it's server-only HTML, no exceptions, no per-file directive needed
 
 - Auto-escape all template interpolation (`Bun.escapeHTML`).
 - Auto CSRF on all mutating requests (`Bun.CSRF`).
-- Default `Content-Security-Policy` header set by the framework, overridable in `sinter.config.ts` but
+- Default `Content-Security-Policy` header set by the framework, overridable in `stoneware.config.ts` but
   never silently absent.
 - No inline `<script>` injection from user data, ever - hydration payloads are JSON-serialized and
   escaped, not string-concatenated into script tags.
 
 ## 11. Build pipeline
 
-1. `bun build` compiles `routes/**/*.sinter.tsx` into a single server bundle (SSR render functions).
-2. `bun build` separately compiles each `islands/**/*.sinter.tsx` into its own client-only chunk
+1. `bun build` compiles `routes/**/*.stoneware.tsx` into a single server bundle (SSR render functions).
+2. `bun build` separately compiles each `islands/**/*.stoneware.tsx` into its own client-only chunk
    (tree-shaken, no server-only code included).
 3. Output: one server bundle + N small island bundles, referenced by hashed filename in the rendered
    HTML's `<script>` tags.
@@ -162,10 +166,10 @@ in `routes/`, it's server-only HTML, no exceptions, no per-file directive needed
 
 ## 13. CLI (build last, after core works)
 
-- `bunx create-sinter my-site` - scaffolds the directory structure above.
-- `sinter dev` - starts dev server with hot reload.
-- `sinter build` - production build (server + island bundles).
-- `sinter start` - runs the production server bundle.
+- `bunx create-stoneware my-site` - scaffolds the directory structure above.
+- `stoneware dev` - starts dev server with hot reload.
+- `stoneware build` - production build (server + island bundles).
+- `stoneware start` - runs the production server bundle.
 
 ## 14. v0.1 milestone scope (target: a few weeks, solo)
 
@@ -178,7 +182,7 @@ Ship in this order - each step should be independently demoable:
    work.
 4. **Server actions + CSRF**: one working form → POST → CSRF verified → response.
 5. **Security defaults locked in**: escaping and CSP confirmed on by default with no config.
-6. **CLI scaffold + docs**: `create-sinter`, a README, and one worked example (e.g., a blog with a
+6. **CLI scaffold + docs**: `create-stoneware`, a README, and one worked example (e.g., a blog with a
    newsletter-signup island) - this is what you show people to get first feedback.
 
 Do not start on lazy hydration directives, multi-framework islands, or anything from Section 3 until
@@ -193,14 +197,14 @@ this list is done and at least one person besides you has run it.
 
 Resolved at implementation start, 2026-08-12:
 
-- [x] **Final project name** - `sinter`. Package `sinter`, CLI binary `sinter`, scaffold `create-sinter`.
+- [x] **Final project name** - `stoneware`. Package `stoneware`, CLI binary `stoneware`, scaffold `create-stoneware`.
       Chosen after `kiln` was found to be taken on npm (an abandoned 2022 package, v0.0.1). Both
-      `sinter` and `create-sinter` were verified available. Repo: github.com/RANJEETJ06/Sinter.
+      `stoneware` and `create-stoneware` were verified available. Repo: github.com/RANJEETJ06/Stoneware.
 - [x] **License** - MIT.
-- [x] **File extension** - plain `.tsx`, directory convention only. The custom `.sinter.tsx` extension
+- [x] **File extension** - plain `.tsx`, directory convention only. The custom `.stoneware.tsx` extension
       was dropped: it bought no behavior the `routes/` vs `islands/` split does not already provide,
       and it would have required mapping a double extension in editors, tsserver, and the Bun loader.
-      This supersedes the `.sinter.tsx` references in §4 and §6.
+      This supersedes the `.stoneware.tsx` references in §4 and §6.
 - [x] **Minimum Bun version** - `>=1.3.0`, pinned in `engines`. Chosen as the floor actually verified
       (developed and tested against 1.3.14). `Bun.CSRF` landed earlier than this, so the real floor is
       likely lower; lower it only after testing against a specific older release.

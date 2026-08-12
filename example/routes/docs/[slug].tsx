@@ -1,5 +1,5 @@
-import { csrfFieldName, csrfToken } from "sinter";
-import type { PageProps } from "sinter";
+import { csrfFieldName, csrfToken } from "stoneware";
+import type { PageProps } from "stoneware";
 import { Layout } from "../../lib/Layout.tsx";
 import { Prose } from "../../lib/Prose.tsx";
 import { DOCS, getDoc, getNeighbors } from "../../lib/docs.ts";
@@ -11,7 +11,7 @@ export default function DocPage({ params }: PageProps) {
 
   if (!page) {
     return (
-      <Layout title="Not found — Sinter" description="No such documentation page." section="docs">
+      <Layout title="Not found — Stoneware" description="No such documentation page." section="docs">
         <div class="shell docs">
           <DocsNav current={slug} />
           <article class="prose">
@@ -31,7 +31,7 @@ export default function DocPage({ params }: PageProps) {
   const { previous, next } = getNeighbors(slug);
 
   return (
-    <Layout title={`${page.title} — Sinter`} description={page.summary} section="docs">
+    <Layout title={`${page.title} — Stoneware`} description={page.summary} section="docs">
       <div class="shell docs">
         <DocsNav current={slug} />
 

@@ -2,7 +2,7 @@
  * Document assembly: turn a rendered route into a complete HTML response.
  *
  * A page may return a whole `<html>` document when it wants full control;
- * otherwise Sinter wraps the markup in a minimal shell. Either way the island
+ * otherwise Stoneware wraps the markup in a minimal shell. Either way the island
  * payload and module scripts are injected just before `</body>`.
  */
 

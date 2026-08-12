@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * Launcher for the `sinter` CLI.
+ * Launcher for the `stoneware` CLI.
  *
- * The CLI itself is Bun-only and always will be: `sinter dev` and `sinter build` are
+ * The CLI itself is Bun-only and always will be: `stoneware dev` and `stoneware build` are
  * built on `Bun.serve` and `Bun.build`, which have no Node equivalent worth
- * shimming. But the *entry point* is plain Node JavaScript so that `npx sinter`
+ * shimming. But the *entry point* is plain Node JavaScript so that `npx stoneware`
  * reaches a real program instead of a syntax error.
  *
  * Running under Bun, this hands straight over to the TypeScript CLI. Running
@@ -17,13 +17,13 @@ import { fileURLToPath } from "node:url";
 
 const CLI_ENTRY = new URL("../src/cli/index.ts", import.meta.url);
 
-const INSTALL_HINT = `[sinter] Sinter runs on Bun, and Bun was not found on your PATH.
+const INSTALL_HINT = `[stoneware] Stoneware runs on Bun, and Bun was not found on your PATH.
 
   Install it:  https://bun.sh/docs/installation
     macOS/Linux  curl -fsSL https://bun.sh/install | bash
     Windows      powershell -c "irm bun.sh/install.ps1|iex"
 
-Then re-run this command. (\`npx create-sinter\` works without Bun; running the
+Then re-run this command. (\`npx create-stoneware\` works without Bun; running the
 dev server and building do not.)`;
 
 if (typeof globalThis.Bun !== "undefined") {

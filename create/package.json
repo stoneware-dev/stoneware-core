@@ -1,11 +1,11 @@
 {
-  "name": "create-sinter",
+  "name": "create-stoneware",
   "version": "0.1.0",
-  "description": "Scaffold a new Sinter project. Runs on plain Node, so it works before Bun is installed.",
+  "description": "Scaffold a new Stoneware project. Runs on plain Node, so it works before Bun is installed.",
   "license": "MIT",
   "type": "module",
   "bin": {
-    "create-sinter": "index.mjs"
+    "create-stoneware": "index.mjs"
   },
   "files": [
     "index.mjs",
@@ -16,15 +16,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/RANJEETJ06/Sinter.git",
+    "url": "git+https://github.com/RANJEETJ06/Stoneware.git",
     "directory": "create"
   },
-  "homepage": "https://github.com/RANJEETJ06/Sinter#readme",
+  "homepage": "https://github.com/RANJEETJ06/Stoneware#readme",
   "bugs": {
-    "url": "https://github.com/RANJEETJ06/Sinter/issues"
+    "url": "https://github.com/RANJEETJ06/Stoneware/issues"
   },
   "keywords": [
-    "sinter",
+    "stoneware",
     "bun",
     "create",
     "scaffold",

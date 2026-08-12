@@ -1,10 +1,10 @@
 # Dependencies
 node_modules/
 
-# Build output. `sinter build` writes here; deleting it is always safe.
-.sinter/
+# Build output. `stoneware build` writes here; deleting it is always safe.
+.stoneware/
 # Scratch output from the payload-budget test, removed on success.
-.sinter-budget/
+.stoneware-budget/
 
 # Package tarballs from `bun pm pack` / `npm pack`.
 *.tgz

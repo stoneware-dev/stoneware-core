@@ -11,11 +11,11 @@ import { beforeAll, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { createApp } from "../src/server.ts";
 import { DOCS } from "../example/lib/docs.ts";
-import type { SinterApp } from "../src/server.ts";
+import type { StonewareApp } from "../src/server.ts";
 
 const SITE_ROOT = join(import.meta.dir, "..", "example");
 
-let app: SinterApp;
+let app: StonewareApp;
 
 beforeAll(async () => {
   app = await createApp(
@@ -84,7 +84,7 @@ describe("the site upholds what it documents", () => {
   test("the landing page ships exactly its three islands", async () => {
     const html = await (await get("/")).text();
     const islands = new Set(
-      [...html.matchAll(/data-sinter-island="([^"]+)"/g)].map((match) => match[1]!),
+      [...html.matchAll(/data-stoneware-island="([^"]+)"/g)].map((match) => match[1]!),
     );
     expect([...islands].sort()).toEqual(["FiringGauge", "InstallCommand", "LiveCounter"]);
   });
@@ -92,7 +92,7 @@ describe("the site upholds what it documents", () => {
   test("a docs page ships only the islands it uses", async () => {
     const html = await (await get("/docs/routing")).text();
     const islands = new Set(
-      [...html.matchAll(/data-sinter-island="([^"]+)"/g)].map((match) => match[1]!),
+      [...html.matchAll(/data-stoneware-island="([^"]+)"/g)].map((match) => match[1]!),
     );
     expect([...islands].sort()).toEqual(["Feedback", "FiringGauge"]);
   });
@@ -103,12 +103,12 @@ describe("the site upholds what it documents", () => {
     expect(html).toContain("<figcaption>");
     // Box-drawing survives, and the HTML inside a diagram stays inert text.
     expect(html).toContain("└");
-    expect(html).toContain("&lt;button data-sinter-id=");
+    expect(html).toContain("&lt;button data-stoneware-id=");
   });
 
   test("the generated project tree is documented", async () => {
     const html = await (await get("/docs/project-structure")).text();
-    for (const entry of ["routes/", "islands/", "sinter.config.ts", ".env.example", "islands.json"]) {
+    for (const entry of ["routes/", "islands/", "stoneware.config.ts", ".env.example", "islands.json"]) {
       expect(html).toContain(entry);
     }
   });

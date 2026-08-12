@@ -1,6 +1,6 @@
 # Test fixture app
 
-A deliberately minimal Sinter app that exists only for the test suite.
+A deliberately minimal Stoneware app that exists only for the test suite.
 
 Tests assert on exact markup, so they need an app whose content never changes for
 editorial reasons. `example/` is the documentation site and its copy is rewritten

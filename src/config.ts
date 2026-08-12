@@ -10,7 +10,7 @@ import { resolve } from "node:path";
 
 export interface CSRFConfig {
   /**
-   * Secret used to sign tokens. Falls back to `SINTER_CSRF_SECRET`, and in dev
+   * Secret used to sign tokens. Falls back to `STONEWARE_CSRF_SECRET`, and in dev
    * only, to an ephemeral per-process secret.
    *
    * Prefer the environment variable over this field so the secret is never
@@ -28,7 +28,7 @@ export interface CSRFConfig {
   headerName?: string;
 }
 
-export interface SinterConfig {
+export interface StonewareConfig {
   /** Project root. Every other path is resolved against it. */
   root?: string;
   port?: number;
@@ -67,9 +67,9 @@ export interface ResolvedConfig {
 }
 
 /**
- * A restrictive policy that still allows a normal Sinter app to work.
+ * A restrictive policy that still allows a normal Stoneware app to work.
  *
- * `script-src 'self'` is deliberate and load-bearing: Sinter never emits inline
+ * `script-src 'self'` is deliberate and load-bearing: Stoneware never emits inline
  * executable script, so no `unsafe-inline` and no nonce plumbing is required.
  */
 export const DEFAULT_CSP = [
@@ -93,20 +93,20 @@ export const SECURITY_HEADERS: Record<string, string> = {
 };
 
 /** Identity helper that gives config files type inference. */
-export function defineConfig(config: SinterConfig): SinterConfig {
+export function defineConfig(config: StonewareConfig): StonewareConfig {
   return config;
 }
 
 let ephemeralSecret: string | undefined;
 
 function resolveCSRFSecret(configured: string | undefined, dev: boolean): string {
-  const secret = configured ?? Bun.env.SINTER_CSRF_SECRET;
+  const secret = configured ?? Bun.env.STONEWARE_CSRF_SECRET;
   if (secret) return secret;
 
   if (!dev) {
     throw new Error(
-      "No CSRF secret configured. Set SINTER_CSRF_SECRET in .env (Bun loads it automatically), " +
-        "in your deployment environment, or as csrf.secret in sinter.config.ts. Without it, " +
+      "No CSRF secret configured. Set STONEWARE_CSRF_SECRET in .env (Bun loads it automatically), " +
+        "in your deployment environment, or as csrf.secret in stoneware.config.ts. Without it, " +
         "tokens do not survive a restart and are not valid across multiple server processes.",
     );
   }
@@ -114,15 +114,15 @@ function resolveCSRFSecret(configured: string | undefined, dev: boolean): string
   if (!ephemeralSecret) {
     ephemeralSecret = crypto.randomUUID() + crypto.randomUUID();
     console.warn(
-      "[sinter] No SINTER_CSRF_SECRET set - using an ephemeral secret for this dev process. " +
+      "[stoneware] No STONEWARE_CSRF_SECRET set - using an ephemeral secret for this dev process. " +
         "Forms rendered before a restart will fail verification after it. " +
-        "Add SINTER_CSRF_SECRET to .env to make it stable.",
+        "Add STONEWARE_CSRF_SECRET to .env to make it stable.",
     );
   }
   return ephemeralSecret;
 }
 
-export function resolveConfig(config: SinterConfig = {}, dev = false): ResolvedConfig {
+export function resolveConfig(config: StonewareConfig = {}, dev = false): ResolvedConfig {
   const root = resolve(config.root ?? process.cwd());
 
   return {
@@ -134,7 +134,7 @@ export function resolveConfig(config: SinterConfig = {}, dev = false): ResolvedC
     routesDir: resolve(root, config.routesDir ?? "routes"),
     islandsDir: resolve(root, config.islandsDir ?? "islands"),
     publicDir: resolve(root, config.publicDir ?? "public"),
-    outDir: resolve(root, config.outDir ?? ".sinter"),
+    outDir: resolve(root, config.outDir ?? ".stoneware"),
     csp: config.csp === undefined ? DEFAULT_CSP : config.csp,
     csrf: {
       secret: resolveCSRFSecret(config.csrf?.secret, dev),
@@ -146,9 +146,9 @@ export function resolveConfig(config: SinterConfig = {}, dev = false): ResolvedC
   };
 }
 
-/** Load `sinter.config.ts` from a project root, if one exists. */
-export async function loadConfigFile(root: string): Promise<SinterConfig> {
-  for (const name of ["sinter.config.ts", "sinter.config.js"]) {
+/** Load `stoneware.config.ts` from a project root, if one exists. */
+export async function loadConfigFile(root: string): Promise<StonewareConfig> {
+  for (const name of ["stoneware.config.ts", "stoneware.config.js"]) {
     const path = resolve(root, name);
     if (!(await Bun.file(path).exists())) continue;
 
@@ -157,7 +157,7 @@ export async function loadConfigFile(root: string): Promise<SinterConfig> {
     if (!config || typeof config !== "object") {
       throw new Error(`${name} must export a config object as its default export.`);
     }
-    return config as SinterConfig;
+    return config as StonewareConfig;
   }
   return {};
 }

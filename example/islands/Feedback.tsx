@@ -9,7 +9,7 @@
  * client and has to reproduce the hidden field the server put there.
  */
 
-import { computed, signal } from "sinter/signals";
+import { computed, signal } from "stoneware/signals";
 
 type Status = "idle" | "sending" | "sent" | "error";
 

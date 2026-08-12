@@ -1,4 +1,4 @@
-import type { PageProps } from "sinter";
+import type { PageProps } from "stoneware";
 
 export default function Entry({ params }: PageProps) {
   return (

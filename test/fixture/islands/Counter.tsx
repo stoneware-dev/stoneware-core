@@ -1,4 +1,4 @@
-import { signal } from "sinter/signals";
+import { signal } from "stoneware/signals";
 import { tally } from "../lib/state.ts";
 
 const count = signal(0);

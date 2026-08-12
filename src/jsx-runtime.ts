@@ -1,5 +1,5 @@
 /**
- * Sinter's JSX runtime.
+ * Stoneware's JSX runtime.
  *
  * Bun's native TSX transpilation does the parsing; this module only builds the
  * plain data structure it hands back. There is no VDOM here and no reconciler -
@@ -28,7 +28,7 @@ export function jsx(type: ElementType, props: Props, key?: string | number): VNo
 /** Automatic-runtime entry point for elements with static multiple children. */
 export const jsxs = jsx;
 
-/** Development entry point. Sinter does not vary behavior by mode here. */
+/** Development entry point. Stoneware does not vary behavior by mode here. */
 export function jsxDEV(type: ElementType, props: Props, key?: string | number): VNode {
   return createVNode(type, props ?? {}, key ?? null);
 }
@@ -57,7 +57,7 @@ type Falsy = false | null | undefined;
  */
 type AttrValue = string | number | boolean | bigint | Falsy | object;
 
-interface SinterIntrinsicAttributes {
+interface StonewareIntrinsicAttributes {
   key?: string | number;
   children?: Child;
   class?: AttrValue;
@@ -80,6 +80,6 @@ export namespace JSX {
   }
 
   export interface IntrinsicElements {
-    [tagName: string]: SinterIntrinsicAttributes;
+    [tagName: string]: StonewareIntrinsicAttributes;
   }
 }

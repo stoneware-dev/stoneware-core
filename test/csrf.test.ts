@@ -95,12 +95,12 @@ describe("verification", () => {
 
 describe("configuration", () => {
   test("a production build refuses to start without a secret", () => {
-    const previous = Bun.env.SINTER_CSRF_SECRET;
-    delete process.env.SINTER_CSRF_SECRET;
+    const previous = Bun.env.STONEWARE_CSRF_SECRET;
+    delete process.env.STONEWARE_CSRF_SECRET;
     try {
       expect(() => resolveConfig({}, false)).toThrow(/No CSRF secret configured/);
     } finally {
-      if (previous !== undefined) process.env.SINTER_CSRF_SECRET = previous;
+      if (previous !== undefined) process.env.STONEWARE_CSRF_SECRET = previous;
     }
   });
 });

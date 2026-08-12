@@ -1,5 +1,5 @@
 /**
- * `sinter dev` - one process serving HTML, client chunks, and live reload
+ * `stoneware dev` - one process serving HTML, client chunks, and live reload
  * (CLAUDE.md §12).
  *
  * There is no second dev-server process and no proxy: `Bun.serve()` handles the
@@ -23,7 +23,7 @@ const LIVE_RELOAD_SCRIPT = `${CLIENT_ASSET_PREFIX}/live-reload.js`;
 const DEBOUNCE_MS = 60;
 
 /** Set on the child process so it does not re-exec itself forever. */
-const HOT_SENTINEL = "SINTER_HOT";
+const HOT_SENTINEL = "STONEWARE_HOT";
 
 /**
  * State that must survive `--hot` re-evaluation.
@@ -39,7 +39,7 @@ interface DevState {
   started: boolean;
 }
 
-const state: DevState = ((globalThis as Record<string, unknown>).__sinterDev ??= {
+const state: DevState = ((globalThis as Record<string, unknown>).__stonewareDev ??= {
   sockets: new Set(),
   watchers: [],
   started: false,
@@ -131,9 +131,9 @@ export async function dev(root: string): Promise<void> {
       try {
         await app.refresh();
         for (const socket of sockets) socket.send("reload");
-        console.log(`[sinter] rebuilt (${reason})`);
+        console.log(`[stoneware] rebuilt (${reason})`);
       } catch (error) {
-        console.error("[sinter] rebuild failed:", error);
+        console.error("[stoneware] rebuild failed:", error);
       }
     }, DEBOUNCE_MS);
   }
@@ -167,13 +167,13 @@ export async function dev(root: string): Promise<void> {
   process.on("SIGTERM", shutdown);
 
   if (isReload) {
-    console.log("[sinter] server modules reloaded");
+    console.log("[stoneware] server modules reloaded");
     return;
   }
 
   const count = state.watchers.length;
-  console.log(`[sinter] dev server on http://${app.config.hostname}:${server.port}`);
-  console.log(`[sinter] watching ${count} director${count === 1 ? "y" : "ies"}`);
+  console.log(`[stoneware] dev server on http://${app.config.hostname}:${server.port}`);
+  console.log(`[stoneware] watching ${count} director${count === 1 ? "y" : "ies"}`);
 }
 
 /**
