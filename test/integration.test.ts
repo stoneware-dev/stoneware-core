@@ -66,6 +66,67 @@ describe("milestone 1 - static SSR", () => {
     expect(await response.text()).toContain("rebeccapurple");
   });
 
+  // The four cache tests below build a second app with dev:false, because the
+  // headers under test only apply in production. They rely on the dev app in
+  // beforeAll having already written .stoneware/islands.json — a production app
+  // refuses to start without it. Keep them in this file for that reason.
+
+  test("public assets are revalidated rather than cached blind", async () => {
+    // These filenames carry no content hash, so a max-age with no validator
+    // would strand a deployed change in browser caches until it expired.
+    const production = await createApp(
+      { root: FIXTURE_ROOT, csrf: { secret: SECRET } },
+      { dev: false },
+    );
+    const response = await production.fetch(new Request("http://localhost/styles.css"));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-cache");
+    expect(response.headers.get("etag")).toMatch(/^W\/"[0-9a-f]+-[0-9a-f]+"$/);
+    expect(response.headers.get("last-modified")).toBeTruthy();
+  });
+
+  test("a matching validator gets a 304 with no body", async () => {
+    const production = await createApp(
+      { root: FIXTURE_ROOT, csrf: { secret: SECRET } },
+      { dev: false },
+    );
+    const first = await production.fetch(new Request("http://localhost/styles.css"));
+    const etag = first.headers.get("etag")!;
+
+    const second = await production.fetch(
+      new Request("http://localhost/styles.css", { headers: { "If-None-Match": etag } }),
+    );
+
+    expect(second.status).toBe(304);
+    expect(await second.text()).toBe("");
+  });
+
+  test("a stale validator still gets the file", async () => {
+    const production = await createApp(
+      { root: FIXTURE_ROOT, csrf: { secret: SECRET } },
+      { dev: false },
+    );
+    const response = await production.fetch(
+      new Request("http://localhost/styles.css", { headers: { "If-None-Match": 'W/"0-0"' } }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("rebeccapurple");
+  });
+
+  test("built chunks stay immutable, because their names are content-hashed", async () => {
+    const production = await createApp(
+      { root: FIXTURE_ROOT, csrf: { secret: SECRET } },
+      { dev: false },
+    );
+    const response = await production.fetch(
+      new Request(`http://localhost${production.islandManifest.Counter!}`),
+    );
+
+    expect(response.headers.get("cache-control")).toContain("immutable");
+  });
+
   test("refuses path traversal out of the asset directories", async () => {
     expect((await get("/_stoneware/..%2f..%2fpackage.json")).status).toBe(404);
   });

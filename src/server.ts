@@ -139,7 +139,7 @@ export async function createApp(
     }
 
     // Anything in public/ is served as-is.
-    const asset = await serveStaticIfExists(config.publicDir, url.pathname, dev);
+    const asset = await serveStaticIfExists(request, config.publicDir, url.pathname, dev);
     if (asset) return asset;
 
     const route = await router.match(url);
@@ -276,7 +276,25 @@ async function serveStatic(rootDir: string, relativePath: string, dev: boolean):
   });
 }
 
+/**
+ * Serve a file from `public/`, if one is there.
+ *
+ * Unlike the built chunks, these filenames carry no content hash, so they must
+ * never be cached without a way to check them. An earlier version sent
+ * `max-age=3600` and no validator at all, which meant a deployed change to a
+ * stylesheet or an image stayed invisible to returning visitors for an hour —
+ * the browser had no mechanism to ask whether it had changed.
+ *
+ * `no-cache` does not mean "do not store": it means "revalidate before use".
+ * Paired with a validator, a repeat visit costs one 304 with an empty body, and
+ * an updated file is picked up immediately.
+ *
+ * The validator is derived from size and mtime rather than hashing the bytes,
+ * so it stays O(1) per request. It is marked weak (`W/`) because that is
+ * exactly what it is — two files can share both values.
+ */
 async function serveStaticIfExists(
+  request: Request,
   rootDir: string,
   pathname: string,
   dev: boolean,
@@ -289,12 +307,49 @@ async function serveStaticIfExists(
   const file = Bun.file(target);
   if (!(await file.exists())) return null;
 
-  return new Response(file, {
-    headers: {
-      "Cache-Control": dev ? "no-store" : "public, max-age=3600",
-      "X-Content-Type-Options": "nosniff",
-    },
-  });
+  const headers: Record<string, string> = {
+    "Cache-Control": dev ? "no-store" : "no-cache",
+    "X-Content-Type-Options": "nosniff",
+  };
+
+  if (!dev) {
+    const etag = `W/"${file.size.toString(16)}-${file.lastModified.toString(16)}"`;
+    headers.ETag = etag;
+    headers["Last-Modified"] = new Date(file.lastModified).toUTCString();
+
+    if (isFresh(request, etag, file.lastModified)) {
+      // 304 carries no body, so the response is a few hundred bytes regardless
+      // of how large the asset is.
+      return new Response(null, { status: 304, headers });
+    }
+  }
+
+  return new Response(file, { headers });
+}
+
+/**
+ * Does the client already hold this exact version?
+ *
+ * `If-None-Match` wins outright when present: an entity tag is a stronger
+ * statement than a timestamp, and mtime has only second-level resolution once
+ * it has been through an HTTP date.
+ */
+function isFresh(request: Request, etag: string, lastModified: number): boolean {
+  const ifNoneMatch = request.headers.get("if-none-match");
+  if (ifNoneMatch !== null) {
+    return ifNoneMatch
+      .split(",")
+      .some((candidate) => candidate.trim() === etag || candidate.trim() === "*");
+  }
+
+  const ifModifiedSince = request.headers.get("if-modified-since");
+  if (ifModifiedSince === null) return false;
+
+  const since = Date.parse(ifModifiedSince);
+  if (Number.isNaN(since)) return false;
+
+  // HTTP dates lose sub-second precision, so compare at that resolution.
+  return Math.floor(lastModified / 1000) * 1000 <= since;
 }
 
 /* -------------------------------------------------------------------------- */
