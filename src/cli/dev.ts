@@ -6,12 +6,14 @@
  * pages, the built island chunks, and the reload socket on one port.
  */
 
+import { spawnSync } from "node:child_process";
 import { watch } from "node:fs";
 import { join } from "node:path";
 import { CLIENT_ASSET_PREFIX } from "../build.ts";
 import { loadConfigFile } from "../config.ts";
 import { directoryExists } from "../router.ts";
 import { createApp } from "../server.ts";
+import type { FSWatcher } from "node:fs";
 import type { ServerWebSocket } from "bun";
 
 const LIVE_RELOAD_PATH = `${CLIENT_ASSET_PREFIX}/live-reload`;
@@ -20,7 +22,58 @@ const LIVE_RELOAD_SCRIPT = `${CLIENT_ASSET_PREFIX}/live-reload.js`;
 /** Coalesce editor write bursts into a single rebuild. */
 const DEBOUNCE_MS = 60;
 
+/** Set on the child process so it does not re-exec itself forever. */
+const HOT_SENTINEL = "KILN_HOT";
+
+/**
+ * State that must survive `--hot` re-evaluation.
+ *
+ * Under `bun --hot` this module is re-evaluated whenever a file it imports
+ * changes, which is exactly what makes route edits take effect. Anything held in
+ * a module-level binding is therefore recreated each time, so watchers and open
+ * sockets are parked on globalThis and cleaned up on the way back in.
+ */
+interface DevState {
+  sockets: Set<ServerWebSocket<unknown>>;
+  watchers: FSWatcher[];
+  started: boolean;
+}
+
+const state: DevState = ((globalThis as Record<string, unknown>).__kilnDev ??= {
+  sockets: new Set(),
+  watchers: [],
+  started: false,
+}) as DevState;
+
+/**
+ * Re-run the CLI under `bun --hot`.
+ *
+ * Without it, edits to a route never reach the browser. Bun resolves a `file:`
+ * import to the same module regardless of a `?v=` query, so the usual
+ * cache-busting trick silently does nothing — the watcher fires, islands
+ * rebuild, and the page keeps serving the previous template. `--hot` is the
+ * supported way to invalidate a module (CLAUDE.md §12).
+ */
+function reexecUnderHot(): never {
+  const entry = join(import.meta.dir, "index.ts");
+  const result = spawnSync(process.execPath, ["--hot", entry, ...Bun.argv.slice(2)], {
+    stdio: "inherit",
+    env: { ...process.env, [HOT_SENTINEL]: "1" },
+  });
+  process.exit(result.status ?? 0);
+}
+
 export async function dev(root: string): Promise<void> {
+  if (!process.env[HOT_SENTINEL]) reexecUnderHot();
+
+  // A re-evaluation means something the server imports actually changed.
+  const isReload = state.started;
+  state.started = true;
+
+  // Watchers are recreated below; drop the previous generation first.
+  for (const watcher of state.watchers) watcher.close();
+  state.watchers = [];
+
   const userConfig = await loadConfigFile(root);
   const app = await createApp(
     { ...userConfig, root },
@@ -31,7 +84,9 @@ export async function dev(root: string): Promise<void> {
   );
 
   const clientScript = await buildLiveReloadClient();
-  const sockets = new Set<ServerWebSocket<unknown>>();
+  // Connections outlive a hot re-evaluation, so the browsers already attached
+  // are the ones that need telling about it.
+  const sockets = state.sockets;
 
   const server = Bun.serve({
     port: app.config.port,
@@ -83,23 +138,42 @@ export async function dev(root: string): Promise<void> {
     }, DEBOUNCE_MS);
   }
 
-  const watched = [app.config.routesDir, app.config.islandsDir, join(app.config.root, "lib")];
-  const watchers = watched.filter(directoryExists).map((dir) =>
+  // public/ is watched too: editing a stylesheet is as much an edit as editing
+  // a template, and without it CSS changes appear only on a manual refresh.
+  const watched = [
+    app.config.routesDir,
+    app.config.islandsDir,
+    app.config.publicDir,
+    join(app.config.root, "lib"),
+  ];
+  state.watchers = watched.filter(directoryExists).map((dir) =>
     watch(dir, { recursive: true }, (_event, filename) => {
       scheduleReload(filename ? String(filename) : dir);
     }),
   );
 
+  // Server modules were just re-evaluated with the new code, so the browser is
+  // now the only stale copy.
+  if (isReload) {
+    for (const socket of sockets) socket.send("reload");
+  }
+
   const shutdown = () => {
-    for (const watcher of watchers) watcher.close();
+    for (const watcher of state.watchers) watcher.close();
     server.stop();
     process.exit(0);
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 
+  if (isReload) {
+    console.log("[kiln] server modules reloaded");
+    return;
+  }
+
+  const count = state.watchers.length;
   console.log(`[kiln] dev server on http://${app.config.hostname}:${server.port}`);
-  console.log(`[kiln] watching ${watchers.length} director${watchers.length === 1 ? "y" : "ies"}`);
+  console.log(`[kiln] watching ${count} director${count === 1 ? "y" : "ies"}`);
 }
 
 /**

@@ -1,8 +1,10 @@
 /**
  * Integration tests: request in, expected HTML out (CLAUDE.md §15).
  *
- * One block per v0.1 milestone, run against the worked example so the example
- * itself stays honest.
+ * One block per v0.1 milestone, run against test/fixture. The fixture exists so
+ * these assertions describe framework behavior only - editing documentation
+ * copy in example/ can never break them. A separate smoke block checks that the
+ * docs site itself still builds and serves.
  */
 
 import { beforeAll, describe, expect, test } from "bun:test";
@@ -10,13 +12,13 @@ import { join } from "node:path";
 import { createApp } from "../src/server.ts";
 import type { KilnApp } from "../src/server.ts";
 
-const EXAMPLE_ROOT = join(import.meta.dir, "..", "example");
+const FIXTURE_ROOT = join(import.meta.dir, "fixture");
 const SECRET = "integration-test-secret-0123456789";
 
 let app: KilnApp;
 
 beforeAll(async () => {
-  app = await createApp({ root: EXAMPLE_ROOT, csrf: { secret: SECRET } }, { dev: true });
+  app = await createApp({ root: FIXTURE_ROOT, csrf: { secret: SECRET } }, { dev: true });
 });
 
 const get = (path: string) => app.fetch(new Request(`http://localhost${path}`));
@@ -29,7 +31,7 @@ async function getHTML(path: string): Promise<string> {
 async function freshToken(): Promise<string> {
   const html = await getHTML("/");
   const match = html.match(/name="_csrf" value="([^"]+)"/);
-  if (!match) throw new Error("Homepage did not render a CSRF token");
+  if (!match) throw new Error("Fixture homepage did not render a CSRF token");
   return match[1]!;
 }
 
@@ -41,17 +43,18 @@ describe("milestone 1 - static SSR", () => {
 
     const html = await response.text();
     expect(html.startsWith("<!DOCTYPE html>")).toBe(true);
-    expect(html).toContain("<title>kiln - a Bun-native SSR framework</title>");
+    expect(html).toContain("<title>Fixture home</title>");
     expect(html).toContain("</html>");
   });
 
   test("renders dynamic route params", async () => {
-    const html = await getHTML("/blog/islands");
-    expect(html).toContain("<h1>Islands, and where the boundary goes</h1>");
+    expect(await getHTML("/blog/hello-world")).toContain("<h1>Entry: hello-world</h1>");
   });
 
-  test("a route can handle its own not-found case", async () => {
-    expect(await getHTML("/blog/nonexistent")).toContain("<h1>No such post</h1>");
+  test("escapes params rather than interpolating them raw", async () => {
+    const html = await getHTML("/blog/%3Cscript%3E");
+    expect(html).toContain("&lt;script&gt;");
+    expect(html).not.toContain("<script>alert");
   });
 
   test("unmatched paths 404", async () => {
@@ -61,7 +64,7 @@ describe("milestone 1 - static SSR", () => {
   test("serves files from public/ as-is", async () => {
     const response = await get("/styles.css");
     expect(response.status).toBe(200);
-    expect(await response.text()).toContain("--accent");
+    expect(await response.text()).toContain("rebeccapurple");
   });
 
   test("refuses path traversal out of the asset directories", async () => {
@@ -74,28 +77,28 @@ describe("milestone 2 - islands", () => {
     const html = await getHTML("/");
     expect(html).toContain('data-kiln-island="Counter"');
     expect(html).toContain("Clicked 0 times");
-    expect(html).toContain("readers subscribed");
+    expect(html).toContain("<strong>7</strong> total");
   });
 
   test("each island on the page gets exactly one module script", async () => {
     const html = await getHTML("/");
-    const scripts = [...html.matchAll(/<script type="module" src="([^"]+)"><\/script>/g)];
-    const sources = scripts.map((match) => match[1]!);
+    const sources = [...html.matchAll(/<script type="module" src="([^"]+)"><\/script>/g)].map(
+      (match) => match[1]!,
+    );
 
-    expect(sources).toHaveLength(3);
-    expect(new Set(sources).size).toBe(3);
+    expect(sources).toHaveLength(2);
+    expect(new Set(sources).size).toBe(2);
     for (const source of sources) expect(source.startsWith("/_kiln/")).toBe(true);
   });
 
   test("built island chunks are served", async () => {
-    const source = app.islandManifest.Counter!;
-    const response = await get(source);
+    const response = await get(app.islandManifest.Counter!);
     expect(response.status).toBe(200);
     expect(await response.text()).toContain("hydrate");
   });
 
   test("a page with no islands ships no JavaScript at all", async () => {
-    const html = await getHTML("/about");
+    const html = await getHTML("/plain");
     expect(html).not.toContain("<script");
     expect(html).not.toContain("/_kiln/");
   });
@@ -110,21 +113,17 @@ describe("milestone 3 - signals", () => {
 
     expect(payload).toBeDefined();
     const parsed = JSON.parse(payload!) as { name: string; id: string; props: object }[];
-    expect(parsed.map((entry) => entry.name)).toEqual([
-      "SubscriberBadge",
-      "Counter",
-      "Newsletter",
-    ]);
+    expect(parsed.map((entry) => entry.name)).toEqual(["Badge", "Counter"]);
     expect(parsed.every((entry) => typeof entry.id === "string")).toBe(true);
   });
 
   test("a shared signal is bundled once, into a chunk both islands import", async () => {
-    const newsletter = await (await get(app.islandManifest.Newsletter!)).text();
-    const badge = await (await get(app.islandManifest.SubscriberBadge!)).text();
+    const counter = await (await get(app.islandManifest.Counter!)).text();
+    const badge = await (await get(app.islandManifest.Badge!)).text();
 
     const chunkOf = (source: string): string[] =>
       source.match(/from\s*"\.\/(chunk-[^"]+\.js)"/g) ?? [];
-    const shared = chunkOf(newsletter).filter((chunk) => chunkOf(badge).includes(chunk));
+    const shared = chunkOf(counter).filter((chunk) => chunkOf(badge).includes(chunk));
 
     expect(shared.length).toBeGreaterThan(0);
   });
@@ -135,7 +134,7 @@ describe("milestone 4 - server actions and CSRF", () => {
     const body = new FormData();
     for (const [key, value] of Object.entries(fields)) body.append(key, value);
     return app.fetch(
-      new Request("http://localhost/api/subscribe", {
+      new Request("http://localhost/api/echo", {
         method: "POST",
         body,
         headers: { Accept: "application/json", ...headers },
@@ -144,38 +143,30 @@ describe("milestone 4 - server actions and CSRF", () => {
   }
 
   test("<Form> injects a hidden CSRF field with no configuration", async () => {
-    const html = await getHTML("/");
-    expect(html).toMatch(/<input type="hidden" name="_csrf" value="[^"]+">/);
+    expect(await getHTML("/")).toMatch(/<input type="hidden" name="_csrf" value="[^"]+">/);
   });
 
-  test("a valid token reaches the handler", async () => {
-    const response = await post({ email: "reader@example.com", _csrf: await freshToken() });
+  test("a valid token reaches the handler with an unconsumed body", async () => {
+    const response = await post({ message: "hello", _csrf: await freshToken() });
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ ok: true });
-  });
-
-  test("the handler receives an unconsumed request body", async () => {
-    const response = await post({ email: "body@example.com", _csrf: await freshToken() });
-    expect(await response.json()).toMatchObject({ ok: true });
+    expect(await response.json()).toMatchObject({ ok: true, message: "hello" });
   });
 
   test("a missing token is rejected before the handler runs", async () => {
-    const response = await post({ email: "attacker@example.com" });
-    expect(response.status).toBe(403);
+    expect((await post({ message: "x" })).status).toBe(403);
   });
 
   test("a forged token is rejected", async () => {
-    const response = await post({ email: "a@b.com", _csrf: "forged" });
-    expect(response.status).toBe(403);
+    expect((await post({ message: "x", _csrf: "forged" })).status).toBe(403);
   });
 
   test("islands can send the token as a header instead", async () => {
-    const response = await post({ email: "header@example.com" }, { "x-csrf-token": await freshToken() });
+    const response = await post({ message: "hi" }, { "x-csrf-token": await freshToken() });
     expect(response.status).toBe(200);
   });
 
   test("an action rejects methods it does not export", async () => {
-    const response = await get("/api/subscribe");
+    const response = await get("/api/echo");
     expect(response.status).toBe(405);
     expect(response.headers.get("allow")).toBe("POST");
   });
@@ -184,7 +175,7 @@ describe("milestone 4 - server actions and CSRF", () => {
     const body = new FormData();
     body.append("_csrf", await freshToken());
     const response = await app.fetch(
-      new Request("http://localhost/about", { method: "POST", body }),
+      new Request("http://localhost/plain", { method: "POST", body }),
     );
     expect(response.status).toBe(405);
   });
@@ -192,7 +183,7 @@ describe("milestone 4 - server actions and CSRF", () => {
 
 describe("milestone 5 - security defaults", () => {
   test("every HTML response carries a CSP with no unsafe directives", async () => {
-    for (const path of ["/", "/about", "/blog/islands", "/no/such/page"]) {
+    for (const path of ["/", "/plain", "/blog/x", "/no/such/page"]) {
       const csp = (await get(path)).headers.get("content-security-policy");
       expect(csp).toBeTruthy();
       expect(csp).toContain("script-src 'self'");
@@ -202,7 +193,7 @@ describe("milestone 5 - security defaults", () => {
   });
 
   test("server action responses are covered too", async () => {
-    const response = await get("/api/subscribe"); // 405, still a response
+    const response = await get("/api/echo"); // 405, still a response
     expect(response.headers.get("content-security-policy")).toBeTruthy();
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
   });
@@ -215,9 +206,9 @@ describe("milestone 5 - security defaults", () => {
   });
 
   test("interpolated markup is escaped, raw() is not", async () => {
-    const html = await getHTML("/about");
+    const html = await getHTML("/plain");
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
-    expect(html).toContain("<em>Bun-native</em>");
+    expect(html).toContain("<em>trusted</em>");
   });
 
   test("no inline executable script is ever emitted", async () => {
@@ -237,5 +228,11 @@ describe("milestone 5 - security defaults", () => {
     )![1]!;
     expect(payload).not.toContain("<");
     expect(payload).not.toContain(">");
+  });
+
+  test("no inline style attribute is emitted, which the default CSP would block", async () => {
+    for (const path of ["/", "/plain"]) {
+      expect(await getHTML(path)).not.toMatch(/<[^>]+\sstyle="/);
+    }
   });
 });

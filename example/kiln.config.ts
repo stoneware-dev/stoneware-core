@@ -2,13 +2,13 @@ import { defineConfig } from "kiln";
 
 export default defineConfig({
   port: 3000,
-  // No csp override: the framework's default policy applies. Overriding it is
-  // possible here, omitting it entirely is not.
+  // No csp override: the framework's default policy applies. This site is the
+  // proof that the strict default is livable - if a page here needed an
+  // exception, that would be a bug in the framework, not in the page.
   csrf: {
     // Bun loads .env automatically, so KILN_CSRF_SECRET is picked up with no
-    // dotenv dependency. The literal fallback exists only so this example runs
-    // straight from a clone — a real app should let the missing-secret error
-    // fire rather than hardcode one.
-    secret: Bun.env.KILN_CSRF_SECRET ?? "example-only-secret-do-not-use-in-production",
+    // dotenv dependency. The literal fallback exists only so the docs site runs
+    // straight from a clone.
+    secret: Bun.env.KILN_CSRF_SECRET ?? "docs-site-only-secret-not-for-production",
   },
 });

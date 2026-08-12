@@ -7,8 +7,8 @@
   "module": "src/index.ts",
   "types": "src/index.ts",
   "bin": {
-    "kiln": "./src/cli/index.ts",
-    "create-kiln": "./src/cli/create.ts"
+    "kiln": "./bin/kiln.mjs",
+    "create-kiln": "./bin/create-kiln.mjs"
   },
   "exports": {
     ".": "./src/index.ts",
@@ -19,6 +19,7 @@
     "./package.json": "./package.json"
   },
   "files": [
+    "bin",
     "src",
     "README.md",
     "LICENSE"
@@ -26,7 +27,8 @@
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "example": "bun run src/cli/index.ts dev --root example"
+    "example": "bun run src/cli/index.ts dev --root example",
+    "docs": "bun run src/cli/index.ts dev --root example"
   },
   "dependencies": {
     "@preact/signals-core": "^1.8.0"

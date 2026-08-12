@@ -1,9 +1,34 @@
+# Dependencies
 node_modules/
-.kiln/
-*.log
 
-# Secrets. Bun loads these automatically; .env.example is the tracked template.
+# Build output. `kiln build` writes here; deleting it is always safe.
+.kiln/
+# Scratch output from the payload-budget test, removed on success.
+.kiln-budget/
+
+# Secrets. Bun loads .env files natively, so they never reach the repo.
+# .env.example is the tracked template and must stay tracked.
 .env
 .env.*
 !.env.example
-.claude
+
+# Logs
+*.log
+
+# TypeScript incremental cache
+*.tsbuildinfo
+
+# Test coverage
+coverage/
+
+# Editors and tooling
+.claude/
+.vscode/
+.idea/
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Note: bun.lock is deliberately NOT ignored. Commit it so installs are
+# reproducible.

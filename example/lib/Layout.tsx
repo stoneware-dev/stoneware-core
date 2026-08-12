@@ -1,38 +1,65 @@
 /**
- * A layout is just a function that returns markup — no base class, no special
- * export, no framework registration. It lives in lib/ because it is shared, not
- * because the framework requires it to.
+ * The site shell.
+ *
+ * A layout is just a function that returns markup - no base class, no special
+ * export, no registration. It lives in lib/ because it is shared, not because
+ * the framework demands it.
  */
 
 import type { Child } from "kiln";
+import FiringGauge from "../islands/FiringGauge.tsx";
 
 export interface LayoutProps {
   title: string;
+  description: string;
+  /** Highlights the matching top-level nav entry. */
+  section?: "docs" | "home";
   children?: Child;
 }
 
-export function Layout({ title, children }: LayoutProps) {
+export function Layout({ title, description, section = "home", children }: LayoutProps) {
   return (
     <html lang="en">
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>{title}</title>
+        <meta name="description" content={description} />
+        <meta name="color-scheme" content="dark light" />
         <link rel="stylesheet" href="/styles.css" />
       </head>
       <body>
-        <header class="site-header">
-          <a class="brand" href="/">
+        <a class="skip" href="#main">
+          Skip to content
+        </a>
+
+        <header class="masthead">
+          <a class="wordmark" href="/">
             kiln
           </a>
           <nav>
-            <a href="/">Posts</a>
-            <a href="/about">About</a>
+            <a href="/" aria-current={section === "home" ? "page" : undefined}>
+              Overview
+            </a>
+            <a href="/docs" aria-current={section === "docs" ? "page" : undefined}>
+              Docs
+            </a>
+            <a href="/docs/quick-start">Quick start</a>
           </nav>
         </header>
-        <main>{children}</main>
-        <footer class="site-footer">
-          <p>Rendered on the server. The only JavaScript on this page is its islands.</p>
+
+        <FiringGauge />
+
+        <main id="main">{children}</main>
+
+        <footer class="shell colophon">
+          <span>
+            Rendered on the server by kiln. This page runs under the framework's default
+            Content-Security-Policy, unmodified.
+          </span>
+          <span>
+            <a href="/docs">Documentation</a> · <a href="/docs/security">Security</a> · MIT
+          </span>
         </footer>
       </body>
     </html>

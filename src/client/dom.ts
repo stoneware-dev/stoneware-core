@@ -179,6 +179,15 @@ function setAttribute(element: Element, name: string, value: unknown): void {
     return;
   }
 
+  // Styles go through the CSSOM rather than a style="" attribute. Under Kiln's
+  // default CSP (`style-src 'self'`, no unsafe-inline) writing that attribute is
+  // blocked, but CSSOM mutation is not governed by CSP at all - so a
+  // signal-driven style works on a strict policy with no exception needed.
+  if (attribute === "style") {
+    applyStyle(element as HTMLElement, value);
+    return;
+  }
+
   if (value == null || value === false) {
     element.removeAttribute(attribute);
     return;
@@ -188,23 +197,30 @@ function setAttribute(element: Element, name: string, value: unknown): void {
     return;
   }
 
-  element.setAttribute(attribute, attribute === "style" ? serializeStyle(value) : String(value));
+  element.setAttribute(attribute, String(value));
 }
 
-function serializeStyle(value: unknown): string {
-  if (typeof value === "string") return value;
-  if (typeof value !== "object" || value === null) return String(value);
+function applyStyle(element: HTMLElement, value: unknown): void {
+  const style = element.style;
+  style.cssText = "";
 
-  let css = "";
+  if (value == null || typeof value === "boolean") return;
+
+  if (typeof value !== "object") {
+    style.cssText = String(value);
+    return;
+  }
+
   for (const [property, raw] of Object.entries(value)) {
     if (raw == null || raw === false) continue;
+    // Custom properties (--heat) are the main reason this path matters: they
+    // let an island drive a stylesheet-defined effect without inline CSS.
     const name = property.startsWith("--")
       ? property
       : property.replace(/[A-Z]/g, (ch) => `-${ch.toLowerCase()}`);
     const unit = typeof raw === "number" && raw !== 0 && !UNITLESS_PROPERTIES.has(name) ? "px" : "";
-    css += `${name}:${raw}${unit};`;
+    style.setProperty(name, `${raw}${unit}`);
   }
-  return css;
 }
 
 const UNITLESS_PROPERTIES = new Set([

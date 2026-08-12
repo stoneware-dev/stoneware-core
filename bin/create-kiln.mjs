@@ -1,17 +1,22 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
- * `bunx create-kiln my-site` - scaffold a new project (CLAUDE.md §13).
+ * `npx create-kiln my-site` / `bunx create-kiln my-site`
  *
- * The generated tree is the §5 convention with nothing extra: routes/, islands/,
- * lib/, public/, and a config file. It runs as-is, and every file in it is
- * meant to be read.
+ * Plain JavaScript with a Node shebang, and deliberately so: this is the one
+ * command someone runs *before* they have Kiln, and possibly before they have
+ * Bun. Requiring Bun to create the project would put the runtime requirement in
+ * front of the thing that explains the runtime requirement.
+ *
+ * Nothing here touches a `Bun.*` API, so the same file runs under both. The
+ * generated project is Bun-only - `kiln dev` and friends need it - and this
+ * script says so on the way out if Bun is missing.
  */
 
-import { mkdir } from "node:fs/promises";
-import { basename, join, resolve } from "node:path";
-import { directoryExists } from "../router.ts";
+import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { basename, dirname, join, resolve } from "node:path";
 
-const files: Record<string, (name: string) => string> = {
+const files = {
   "package.json": (name) =>
     JSON.stringify(
       {
@@ -21,6 +26,7 @@ const files: Record<string, (name: string) => string> = {
         scripts: { dev: "kiln dev", build: "kiln build", start: "kiln start" },
         dependencies: { kiln: "^0.1.0" },
         devDependencies: { "@types/bun": "^1.3.0" },
+        engines: { bun: ">=1.3.0" },
       },
       null,
       2,
@@ -61,20 +67,39 @@ export default defineConfig({
 
   ".gitignore": () =>
     [
+      "# Dependencies",
       "node_modules/",
+      "",
+      "# Build output. `kiln build` writes here; deleting it is always safe.",
       ".kiln/",
       "",
-      "# Secrets. Bun loads these automatically; .env.example is the tracked template.",
+      "# Secrets. Bun loads .env files natively, so they never reach the repo.",
+      "# .env.example is the tracked template and must stay tracked.",
       ".env",
       ".env.*",
       "!.env.example",
       "",
+      "# Logs",
+      "*.log",
+      "",
+      "# TypeScript incremental cache",
+      "*.tsbuildinfo",
+      "",
+      "# Editors and OS cruft",
+      ".vscode/",
+      ".idea/",
+      ".DS_Store",
+      "Thumbs.db",
+      "",
+      "# Note: bun.lock is deliberately NOT ignored. Commit it so installs are",
+      "# reproducible.",
+      "",
     ].join("\n"),
 
-  // Generated with a real secret so `bun run dev` starts clean, and so nobody
-  // is tempted to paste a placeholder into production. Bun reads .env natively,
-  // so there is no dotenv dependency.
-  ".env": () => `KILN_CSRF_SECRET=${crypto.randomUUID()}${crypto.randomUUID()}\n`,
+  // Generated with a real secret so `bun run dev` starts clean, and so nobody is
+  // tempted to paste a placeholder into production. Bun reads .env natively, so
+  // there is no dotenv dependency.
+  ".env": () => `KILN_CSRF_SECRET=${randomUUID()}${randomUUID()}\n`,
 
   ".env.example": () => `# Copy to .env and set a unique value per environment.
 # Signs CSRF tokens: rotating it invalidates every form currently rendered.
@@ -171,29 +196,33 @@ different one per environment; \`.env.example\` is the tracked template.
 `,
 };
 
-async function main(): Promise<void> {
-  const target = Bun.argv[2];
+function directoryExists(path) {
+  return existsSync(path) && statSync(path).isDirectory();
+}
+
+/** True when this process is Bun rather than Node. */
+const isBun = typeof globalThis.Bun !== "undefined";
+
+function main() {
+  const target = process.argv[2];
 
   if (!target || target.startsWith("-")) {
-    console.log("Usage: bunx create-kiln <directory>");
+    console.log("Usage: bunx create-kiln <directory>   (npx also works)");
     process.exit(target ? 0 : 1);
   }
 
   const dir = resolve(target);
   const name = basename(dir);
 
-  if (directoryExists(dir)) {
-    const glob = new Bun.Glob("*");
-    for await (const _entry of glob.scan({ cwd: dir, onlyFiles: false })) {
-      console.error(`[kiln] ${dir} already exists and is not empty.`);
-      process.exit(1);
-    }
+  if (directoryExists(dir) && readdirSync(dir).length > 0) {
+    console.error(`[kiln] ${dir} already exists and is not empty.`);
+    process.exit(1);
   }
 
   for (const [relativePath, contents] of Object.entries(files)) {
     const path = join(dir, relativePath);
-    await mkdir(join(path, ".."), { recursive: true });
-    await Bun.write(path, contents(name));
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, contents(name));
   }
 
   console.log(`Created ${name} in ${dir}\n`);
@@ -201,6 +230,13 @@ async function main(): Promise<void> {
   console.log(`  cd ${target}`);
   console.log("  bun install");
   console.log("  bun run dev");
+
+  if (!isBun) {
+    console.log(
+      "\nNote: the project was scaffolded with Node, but Kiln itself runs on Bun.\n" +
+        "If you do not have it yet: https://bun.sh/docs/installation",
+    );
+  }
 }
 
-await main();
+main();

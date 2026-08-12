@@ -1,25 +1,80 @@
 # kiln
 
-A server-first web framework built natively on Bun. Every route renders to complete HTML.
-Interactivity is opt-in per directory. Escaping and CSRF protection are on before you write any
-configuration.
+**A Bun-native, server-first web framework where HTML is the default and JavaScript is opt-in.**
+Build content-heavy sites without shipping a client runtime to pages that do not need one.
 
-**In one line:** Fresh, but Bun-native instead of Deno-native, with a non-component template model.
+The web sends a lot of JavaScript to sites that are mostly documents. Kiln inverts the default: every
+route renders to complete HTML, and a component ships JavaScript only if you put it in `islands/`.
+Escaping, CSRF verification, and a strict CSP are on before you write any configuration.
 
-```
-bunx create-kiln my-site
+Measured on this repo's own documentation site, in production:
+
+| | |
+|---|---|
+| Whole client runtime (signals + hydrate + DOM) | ~3.2 KB gzipped |
+| One island (the counter on the home page) | ~0.2 KB gzipped |
+| A page with no islands | **0 bytes, no script tag** |
+| Runtime dependencies | **1** (`@preact/signals-core`) |
+
+```sh
+bunx create-kiln my-site   # npx create-kiln my-site works too
 cd my-site
 bun install
 bun run dev
 ```
 
-## What it is for
+Scaffolding runs on plain Node, so `npx` works before Bun is installed. Everything after that — the
+dev server, the build — runs on Bun, and `kiln` says so with an install link if Bun is missing.
 
-Content-heavy, SEO-sensitive sites - marketing pages, blogs, docs, small business sites - that need a
-handful of interactive widgets rather than a single-page app.
+## What problems it solves
 
-If your page is mostly a document, shipping a client runtime to render it is a strange default. Kiln
-inverts that: the page is HTML, and the widgets are the exception.
+**1. You ship a runtime to render a document.** A blog post is fully known before the response
+finishes; sending a framework so the browser can rebuild it is work nobody asked for. A Kiln page
+with no islands ships zero bytes — asserted by the test suite, not just intended.
+
+**2. The client/server boundary drifts.** When the boundary is a directive that propagates through
+the import graph, one innocent import pulls a subtree client-side and you find out from a bundle
+analyzer. Here the boundary is a directory, and it is enforced by the build: `routes/` files are
+never handed to the bundler, so they *cannot* reach the client.
+
+**3. You hydrate things that will never change.** On a twenty-page site where only the newsletter and
+a calculator are interactive, the header, footer, article and SEO markup have nothing to hydrate.
+Kiln doesn't — they are strings the server produced, and they stay that way.
+
+**4. The component model costs more than it returns here.** Hook ordering, dependency arrays, stale
+closures, and memoization-as-tax are a fair trade for an application UI. For a page that renders once
+and then sits there, it is overhead with no matching benefit. A template is a plain function called
+once, on the server.
+
+**5. Security is opt-in, and CSP is what everyone skips.** A strict CSP is normally painful because
+frameworks emit inline script and style, so you end up with `unsafe-inline`, nonce plumbing, or
+nothing. Kiln never emits inline executable script, so `script-src 'self'` simply works — this repo's
+docs site runs under the default policy unmodified, with zero violations.
+
+**6. Hydration mismatches.** Kiln does not reconcile against server markup; it builds the island's
+tree and replaces the marked element. There is nothing to mismatch. (The honest trade: a replacement,
+not a resumption.)
+
+**7. Toolchain sprawl.** Serving, bundling, escaping, CSRF tokens, routing, `.env`, and the test
+runner are all Bun's own APIs. If Bun ships it, Kiln does not add a package that reimplements it.
+
+### What it does not solve
+
+Kiln has nothing to say about databases, authentication, offline support, realtime collaboration, or
+large-scale client state. It does not make a site automatically fast or automatically secure — it
+removes a category of *framework-level* mistake. Your queries, your auth, and your payload sizes
+remain yours.
+
+### When not to use it
+
+- Genuinely app-like UI — a dashboard, an editor, heavy shared client state. Use a SPA framework.
+- You need client-side routing. Kiln does full page loads.
+- You need streaming SSR, resumability, or partial rendering. Deferred for v0.1.
+- You are not on Bun. Kiln is Bun-native by design, not Node-compatible-via-Bun.
+- You need a plugin ecosystem. This is v0.1; there isn't one.
+
+If your page is mostly a document with a few live parts, these trades are nearly all upside. If it is
+mostly an application, almost none of them are.
 
 ## The five decisions that define it
 
@@ -190,23 +245,37 @@ content-hashed chunk per island and a shared runtime chunk.
 > `Bun.FileSystemRouter`, so `routes/` must exist at runtime. It is read for its filenames, never for
 > its contents.
 
-## Example
+## The example is the documentation
 
-`example/` is a blog with three islands, a newsletter signup backed by a server action, and a page
-that ships no JavaScript at all.
+`example/` is Kiln's own documentation site, built with Kiln.
 
+```sh
+bun run example    # or: bun run docs
 ```
-bun run example
-```
+
+It is the honest version of a feature list. The site runs under the framework's default CSP with no
+overrides, so if a page there needed an exception that would be a bug in the framework rather than in
+the page. Four islands carry all of its interactivity — an install-command switcher, a live counter,
+a scroll-linked gauge, and a feedback form backed by a server action — and every other page ships no
+JavaScript at all. Code samples are syntax-highlighted on the server, so even that costs nothing.
+
+The scroll gauge is worth a look if you are curious how islands cope with a strict CSP: it writes a
+CSS custom property through the CSSOM rather than a `style` attribute, because `style-src 'self'`
+blocks the latter.
 
 ## Testing
 
-```
+```sh
 bun test
 ```
 
-Unit tests cover the renderer, the router, and CSRF verification; the client runtime is tested
-against a real DOM; and there is one integration test group per milestone, run against `example/`.
+- **Unit** — renderer and escaping, router matching, CSRF verification.
+- **Client runtime** — hydration and signal bindings, against a real DOM via happy-dom.
+- **Integration** — one group per milestone, run against `test/fixture/`, a deliberately minimal app.
+- **Smoke** — the docs site builds, serves, and upholds the claims it makes about itself.
+
+Integration tests run against a fixture rather than `example/` on purpose: assertions on exact markup
+should not break every time documentation copy is reworded.
 
 ## Status
 
