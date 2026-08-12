@@ -77,4 +77,26 @@ describe("static export", () => {
     expect(result.pages).toBeGreaterThan(0);
     expect(result.outDir).toBe(OUT_DIR);
   });
+
+  test("writes 404.html, which is what a static host looks for", async () => {
+    // A 404 has no URL of its own, so it is produced by requesting a path that
+    // cannot match rather than by routing to it.
+    const page = join(OUT_DIR, "404.html");
+    expect(existsSync(page)).toBe(true);
+    expect(await Bun.file(page).text()).toContain("404");
+  });
+
+  test("does not export a reserved route as a page", () => {
+    expect(existsSync(join(OUT_DIR, "_404"))).toBe(false);
+    expect(existsSync(join(OUT_DIR, "_500"))).toBe(false);
+  });
+
+  test("fails rather than writing a page that errored", async () => {
+    // A broken page should stop the build, not ship as a 500 frozen to disk.
+    const root = join(import.meta.dir, "fixture-errors");
+    const out = join(tmpdir(), `stoneware-export-fail-${Date.now()}`);
+
+    await expect(exportSite(root, out)).rejects.toThrow(/returned 500 during export/);
+    await rm(out, { recursive: true, force: true });
+  });
 });

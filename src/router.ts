@@ -58,6 +58,36 @@ export interface ActionRoute {
 
 export type MatchedRoute = PageRoute | ActionRoute;
 
+/** The error pages a project may define, by filename under `routes/`. */
+export type ErrorPageName = "_404" | "_500";
+
+/** Arguments handed to `routes/_404.tsx` and `routes/_500.tsx`. */
+export interface ErrorPageProps extends PageProps {
+  status: number;
+  /** Short reason, already safe to display. */
+  message: string;
+  /**
+   * The thrown value, in development only.
+   *
+   * Production leaves this undefined rather than trusting every error page not
+   * to render it: an exception message routinely carries a file path, a query,
+   * or a connection string.
+   */
+  error?: unknown;
+}
+
+/**
+ * Is this route pattern reserved by the framework rather than servable?
+ *
+ * A leading underscore marks a file as a convention, not a page — the same
+ * signal Next.js uses. Without this, `routes/_404.tsx` would answer a real
+ * request at `/_404` with a 200, which is both surprising and a way to make the
+ * error page reachable as content.
+ */
+export function isReservedRoute(pattern: string): boolean {
+  return pattern.split("/").some((segment) => segment.startsWith("_"));
+}
+
 export interface RouterOptions {
   /** In dev, modules are re-imported on every request so edits take effect. */
   dev?: boolean;
@@ -121,6 +151,7 @@ export class Router {
 
     const matched = this.#router.match(lookup);
     if (!matched) return null;
+    if (isReservedRoute(matched.name)) return null;
 
     const params = restoreParams(matched.params);
     if (params === null) return null;
@@ -146,6 +177,23 @@ export class Router {
       `Route ${matched.filePath} exports neither a default component nor any HTTP ` +
         `method handlers (${HTTP_METHODS.join(", ")}).`,
     );
+  }
+
+  /**
+   * Load a custom error page, or null if the project has not defined one.
+   *
+   * These come through the ordinary route table, so a production build inlines
+   * them into the server bundle like any other route and dev picks up edits to
+   * them without a restart — neither needed a special case.
+   */
+  async errorPage(name: ErrorPageName): Promise<Component<ErrorPageProps> | null> {
+    const filePath = this.#router?.routes[`/${name}`];
+    if (!filePath) return null;
+
+    const module = await this.#import(filePath);
+    return typeof module.default === "function"
+      ? (module.default as Component<ErrorPageProps>)
+      : null;
   }
 
   async #import(filePath: string): Promise<Record<string, unknown>> {

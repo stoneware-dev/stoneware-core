@@ -109,6 +109,8 @@ my-site/
     index.tsx              -> /
     blog/[slug].tsx        -> /blog/:slug
     api/subscribe.ts       -> server action (POST/PUT/DELETE handlers)
+    _404.tsx               -> shown for any unmatched path (optional)
+    _500.tsx               -> shown when a page throws (optional)
   islands/                 the only place client JS originates
     Counter.tsx
   lib/                     behavior functions, shared utilities
@@ -220,6 +222,39 @@ the `x-csrf-token` header.
 Set `STONEWARE_CSRF_SECRET` in production. Without it, a production build refuses to start rather than
 falling back to something that appears to work.
 
+## Error pages
+
+Add `routes/_404.tsx` or `routes/_500.tsx` and they replace the built-in pages. They are ordinary
+templates - your layout, your islands, your CSS:
+
+```tsx
+// routes/_404.tsx
+import type { ErrorPageProps } from "stoneware";
+
+export default function NotFound({ url }: ErrorPageProps) {
+  return <Layout title="Not found">No page at {url.pathname}</Layout>;
+}
+```
+
+`_500.tsx` additionally receives `error`, **populated in development only**. In production it is
+`undefined` rather than left to each error page to handle responsibly - an exception message
+routinely carries a file path, a query, or a connection string.
+
+A file whose name starts with `_` is a convention, not a page. `/_404` is not routable; requesting it
+returns the 404 page, with a 404 status.
+
+Three properties hold whether or not you define these pages:
+
+- **Failure is terminal.** If your `_500.tsx` throws, the built-in page is served. The error path
+  never re-enters itself.
+- **Errors are never cached** - `Cache-Control: no-store`. A 404 held by a CDN outlives the deploy
+  that adds the missing page, and a 500 captured during an incident outlives the fix.
+- **Security headers still apply.** Error responses leave through the same exit as every other
+  response.
+
+`stoneware export` writes the 404 page to `dist/404.html`, which is the file Cloudflare Pages,
+Netlify and GitHub Pages each serve for an unmatched path.
+
 ## Environment variables
 
 Bun reads `.env`, `.env.local`, and `.env.<mode>` natively, so Stoneware has no dotenv dependency -
@@ -264,6 +299,7 @@ Set automatically, and the distinction matters:
 | `public/` assets | `no-cache` + `ETag` — revalidated, so a deploy is picked up immediately |
 | HTML with no CSRF token | `public, no-cache` + `ETag` — a repeat request costs one 304 |
 | HTML carrying a CSRF token | `private, no-store` — never shared, or one visitor gets another's token |
+| Any error response | `no-store` — a cached 404 outlives the deploy that fixes it |
 
 `no-cache` means *revalidate before use*, not *do not store*.
 

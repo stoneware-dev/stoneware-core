@@ -24,7 +24,7 @@ const files = {
         private: true,
         type: "module",
         scripts: { dev: "stoneware dev", build: "stoneware build", start: "stoneware start" },
-        dependencies: { stoneware: "^0.1.1" },
+        dependencies: { stoneware: "^0.1.2" },
         devDependencies: { "@types/bun": "^1.3.0" },
         engines: { bun: ">=1.3.0" },
       },
@@ -126,6 +126,36 @@ export default function Home(_props: PageProps) {
           </p>
           <p>The button below is an island - the only JavaScript on this page.</p>
           <Counter />
+        </main>
+      </body>
+    </html>
+  );
+}
+`,
+
+  // A file under routes/ whose name starts with "_" is a convention, not a
+  // page: this is never servable at /_404. Delete it and the built-in page
+  // takes over.
+  "routes/_404.tsx": () => `import type { ErrorPageProps } from "stoneware";
+
+export default function NotFound({ url }: ErrorPageProps) {
+  return (
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Not found</title>
+        <link rel="stylesheet" href="/styles.css" />
+      </head>
+      <body>
+        <main>
+          <h1>Not found</h1>
+          <p>
+            Nothing is published at <code>{url.pathname}</code>.
+          </p>
+          <p>
+            <a href="/">Back to the home page</a>
+          </p>
         </main>
       </body>
     </html>

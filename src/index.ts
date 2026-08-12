@@ -20,7 +20,13 @@ export { buildDocument } from "./document.ts";
 
 export type { Child, Component, Props, VNode, RawHTML } from "./types.ts";
 export type { StonewareConfig, ResolvedConfig, CSRFConfig } from "./config.ts";
-export type { PageProps, ActionContext, ActionHandler, MatchedRoute } from "./router.ts";
+export type {
+  PageProps,
+  ActionContext,
+  ActionHandler,
+  MatchedRoute,
+  ErrorPageProps,
+} from "./router.ts";
 export type { StonewareApp, ServeResult } from "./server.ts";
 export type { IslandManifest } from "./build.ts";
 export type { RenderResult, CollectedIsland } from "./render.ts";

@@ -140,8 +140,9 @@ export async function createApp(
         return withSecurityHeaders(await handleRequest(request), config);
       } catch (error) {
         console.error("[stoneware] Unhandled error while serving request:", error);
+        // renderErrorPage never throws, so this catch cannot be re-entered.
         return withSecurityHeaders(
-          errorResponse(500, dev ? String(error) : "Internal Server Error", config),
+          await renderErrorPage(500, "Internal Server Error", request, error),
           config,
         );
       }
@@ -161,7 +162,7 @@ export async function createApp(
     if (asset) return asset;
 
     const route = await router.match(url);
-    if (!route) return errorResponse(404, "Not Found", config);
+    if (!route) return renderErrorPage(404, "Not Found", request);
 
     // Every mutating request is verified before a handler can observe it.
     // There is no per-route opt-in and no way to reach a handler without this.
@@ -237,7 +238,81 @@ export async function createApp(
     return new Response(request.method === "HEAD" ? null : html, { status: 200, headers });
   }
 
+  /**
+   * Render `routes/_404.tsx` or `routes/_500.tsx`, falling back to a built-in
+   * page when the project has none — or when the project's own error page
+   * throws.
+   *
+   * That fallback is the whole reason this is separate from `handlePage`. An
+   * error page that fails is the one case where re-entering the normal error
+   * path would recurse forever, so failure here is terminal: it logs and serves
+   * markup that cannot fail.
+   */
+  async function renderErrorPage(
+    status: 404 | 500,
+    message: string,
+    request: Request,
+    error?: unknown,
+  ): Promise<Response> {
+    const name = status === 404 ? "_404" : "_500";
+
+    try {
+      const component = await router.errorPage(name);
+      if (component) {
+        const url = new URL(request.url);
+        const props = {
+          status,
+          message,
+          params: {},
+          request,
+          url,
+          // Only in dev. An exception message routinely carries a file path or
+          // a query, and this would hand it to whatever the page renders.
+          error: dev ? error : undefined,
+        };
+
+        const context = { config, request, url, personalized: false };
+        const rendered = await withRenderContext(context, async () => {
+          const tree = await component(props);
+          return renderToString(tree, { islands: islandRegistry });
+        });
+
+        const html = buildDocument({
+          html: rendered.html,
+          islands: rendered.islands,
+          manifest: islandManifest,
+          title: String(status),
+          suffix: options.documentSuffix,
+          stylesheet,
+        });
+
+        return htmlResponse(html, status, request);
+      }
+    } catch (pageError) {
+      console.error(`[stoneware] routes/${name} failed to render:`, pageError);
+    }
+
+    return errorResponse(status, message, config);
+  }
+
   return app;
+}
+
+/**
+ * An error response is never cached.
+ *
+ * `no-cache` would be safe for the body but not for the situation: a 404 held
+ * by a CDN outlives the deploy that adds the missing page, and a 500 captured
+ * during an incident outlives the fix.
+ */
+function htmlResponse(html: string, status: number, request: Request): Response {
+  return new Response(request.method === "HEAD" ? null : html, {
+    status,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
 }
 
 /**
@@ -442,7 +517,7 @@ function errorResponse(status: number, message: string, _config: ResolvedConfig)
 
   return new Response(body, {
     status,
-    headers: { "Content-Type": "text/html; charset=utf-8" },
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
   });
 }
 

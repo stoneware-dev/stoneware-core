@@ -15,7 +15,7 @@ import { buildIslands, buildStyles } from "../build.ts";
 import { loadConfigFile, resolveConfig } from "../config.ts";
 import { discoverIslands } from "../islands.ts";
 import { createApp } from "../server.ts";
-import { Router } from "../router.ts";
+import { Router, isReservedRoute } from "../router.ts";
 
 export interface ExportResult {
   outDir: string;
@@ -57,6 +57,10 @@ export async function exportSite(root: string, outDirName = "dist"): Promise<Exp
   let pages = 0;
 
   for (const [pattern, filePath] of Object.entries(router.routes)) {
+    // `_404` and friends are conventions, not pages; the router refuses to
+    // serve them, so fetching one here would look like a broken route.
+    if (isReservedRoute(pattern)) continue;
+
     const urls = await expand(pattern, filePath, skipped);
 
     for (const url of urls) {
@@ -89,6 +93,14 @@ export async function exportSite(root: string, outDirName = "dist"): Promise<Exp
       await writePage(outDir, url, html);
       pages++;
     }
+  }
+
+  // A 404 has no URL of its own, so it is requested rather than routed to: any
+  // path that cannot match produces it. Cloudflare Pages, Netlify and GitHub
+  // Pages all serve /404.html for a miss, so that is where it goes.
+  const missing = await app.fetch(new Request("http://export.local/_stoneware_not_found"));
+  if (missing.status === 404) {
+    await Bun.write(join(outDir, "404.html"), await missing.text());
   }
 
   // Client chunks and the stylesheet, then anything in public/. public/ goes
