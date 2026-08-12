@@ -179,7 +179,8 @@ export async function createApp(
     // The page function runs inside the render context too, not just the
     // renderer: a template may call `csrfToken()` while building its tree, and
     // may await data before returning it.
-    const rendered = await withRenderContext({ config, request, url }, async () => {
+    const context = { config, request, url, personalized: false };
+    const rendered = await withRenderContext(context, async () => {
       const tree = await route.component(props);
       return renderToString(tree, { islands: islandRegistry });
     });
@@ -192,10 +193,29 @@ export async function createApp(
       suffix: options.documentSuffix,
     });
 
-    return new Response(request.method === "HEAD" ? null : html, {
-      status: 200,
-      headers: { "Content-Type": "text/html; charset=utf-8" },
-    });
+    const headers = new Headers({ "Content-Type": "text/html; charset=utf-8" });
+
+    if (dev) {
+      headers.set("Cache-Control", "no-store");
+    } else if (context.personalized) {
+      // The markup embeds a CSRF token, so it belongs to one visitor. A shared
+      // cache must never hold it, and there is nothing to revalidate against
+      // either: a fresh token on every render means the body changes each time.
+      headers.set("Cache-Control", "private, no-store");
+    } else {
+      // Identical for every visitor. `no-cache` means "revalidate", not "do not
+      // store", so a CDN or browser keeps the bytes and a repeat request costs
+      // one 304 rather than a re-render.
+      headers.set("Cache-Control", "public, no-cache");
+      headers.set("ETag", `W/"${Bun.hash(html).toString(16)}"`);
+    }
+
+    const etag = headers.get("ETag");
+    if (etag !== null && requestMatchesEtag(request, etag)) {
+      return new Response(null, { status: 304, headers });
+    }
+
+    return new Response(request.method === "HEAD" ? null : html, { status: 200, headers });
   }
 
   return app;
@@ -334,12 +354,18 @@ async function serveStaticIfExists(
  * statement than a timestamp, and mtime has only second-level resolution once
  * it has been through an HTTP date.
  */
-function isFresh(request: Request, etag: string, lastModified: number): boolean {
+export function requestMatchesEtag(request: Request, etag: string): boolean {
   const ifNoneMatch = request.headers.get("if-none-match");
-  if (ifNoneMatch !== null) {
-    return ifNoneMatch
-      .split(",")
-      .some((candidate) => candidate.trim() === etag || candidate.trim() === "*");
+  if (ifNoneMatch === null) return false;
+
+  return ifNoneMatch
+    .split(",")
+    .some((candidate) => candidate.trim() === etag || candidate.trim() === "*");
+}
+
+function isFresh(request: Request, etag: string, lastModified: number): boolean {
+  if (request.headers.get("if-none-match") !== null) {
+    return requestMatchesEtag(request, etag);
   }
 
   const ifModifiedSince = request.headers.get("if-modified-since");

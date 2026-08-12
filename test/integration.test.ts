@@ -127,6 +127,39 @@ describe("milestone 1 - static SSR", () => {
     expect(response.headers.get("cache-control")).toContain("immutable");
   });
 
+  test("a page with no CSRF token is publicly cacheable and revalidates", async () => {
+    const production = await createApp(
+      { root: FIXTURE_ROOT, csrf: { secret: SECRET } },
+      { dev: false },
+    );
+    const response = await production.fetch(new Request("http://localhost/plain"));
+
+    expect(response.headers.get("cache-control")).toBe("public, no-cache");
+    expect(response.headers.get("etag")).toMatch(/^W\/"[0-9a-f]+"$/);
+
+    const revalidated = await production.fetch(
+      new Request("http://localhost/plain", {
+        headers: { "If-None-Match": response.headers.get("etag")! },
+      }),
+    );
+    expect(revalidated.status).toBe(304);
+    expect(await revalidated.text()).toBe("");
+  });
+
+  test("a page carrying a CSRF token is never shared-cacheable", async () => {
+    // The markup embeds a token unique to one visitor. Serving it from a shared
+    // cache would hand a second visitor the first visitor's token.
+    const production = await createApp(
+      { root: FIXTURE_ROOT, csrf: { secret: SECRET } },
+      { dev: false },
+    );
+    const response = await production.fetch(new Request("http://localhost/"));
+
+    expect(await response.text()).toContain('name="_csrf"');
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("etag")).toBeNull();
+  });
+
   test("refuses path traversal out of the asset directories", async () => {
     expect((await get("/_stoneware/..%2f..%2fpackage.json")).status).toBe(404);
   });

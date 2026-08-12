@@ -8,7 +8,7 @@
  */
 
 import { generateToken } from "./csrf.ts";
-import { getRenderContext } from "./context.ts";
+import { getRenderContext, markPersonalized } from "./context.ts";
 import { isSafeMethod } from "./csrf.ts";
 import type { Child } from "./types.ts";
 
@@ -33,6 +33,7 @@ export function Form({ action, method = "POST", children, ...rest }: FormProps) 
   }
 
   const { config } = getRenderContext();
+  markPersonalized();
   const token = generateToken(config);
 
   // HTML forms can only issue GET and POST. PUT/PATCH/DELETE are tunnelled

@@ -15,6 +15,20 @@ export interface RenderContext {
   config: ResolvedConfig;
   request: Request;
   url: URL;
+  /**
+   * Set when this render issued a CSRF token.
+   *
+   * Such a page is unique to one visitor, so it must never reach a shared
+   * cache — handing a second visitor a first visitor's token would defeat the
+   * protection entirely. The response layer reads this to decide.
+   */
+  personalized: boolean;
+}
+
+/** Mark the current render as visitor-specific. Safe to call outside a render. */
+export function markPersonalized(): void {
+  const context = storage.getStore();
+  if (context !== undefined) context.personalized = true;
 }
 
 const storage = new AsyncLocalStorage<RenderContext>();

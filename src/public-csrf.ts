@@ -7,11 +7,12 @@
  */
 
 import { generateToken } from "./csrf.ts";
-import { getRenderContext } from "./context.ts";
+import { getRenderContext, markPersonalized } from "./context.ts";
 
 /** Mint a CSRF token for the request currently being rendered. */
 export function csrfToken(): string {
   const { config } = getRenderContext();
+  markPersonalized();
   return generateToken(config);
 }
 
