@@ -130,7 +130,12 @@ export function resolveConfig(config: StonewareConfig = {}, dev = false): Resolv
     // PORT wins over the config file so a deploy target (and the CLI's --port,
     // which sets it) can override without editing source.
     port: Bun.env.PORT ? Number(Bun.env.PORT) : (config.port ?? 3000),
-    hostname: config.hostname ?? "localhost",
+    // In development, bind loopback only — a dev server should not be reachable
+    // from the rest of the network. In production the opposite is required:
+    // Render, Railway, Fly and every container runtime reach the process through
+    // a proxy on another interface, so binding to localhost makes the service
+    // unreachable and the platform's health check fails with no useful error.
+    hostname: config.hostname ?? Bun.env.HOST ?? (dev ? "localhost" : "0.0.0.0"),
     routesDir: resolve(root, config.routesDir ?? "routes"),
     islandsDir: resolve(root, config.islandsDir ?? "islands"),
     publicDir: resolve(root, config.publicDir ?? "public"),

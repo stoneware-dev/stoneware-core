@@ -245,6 +245,82 @@ content-hashed chunk per island and a shared runtime chunk.
 > `Bun.FileSystemRouter`, so `routes/` must exist at runtime. It is read for its filenames, never for
 > its contents.
 
+## Deploying
+
+A Stoneware app is a Bun HTTP server. There is no adapter layer and no per-platform build target —
+you add one file and run it.
+
+```ts
+// server.ts
+import { createApp } from "stoneware";
+import config from "./stoneware.config.ts";
+
+const app = await createApp(config, { dev: false });
+
+Bun.serve({
+  port: Number(Bun.env.PORT ?? 3000),
+  fetch: (request) => app.fetch(request),
+});
+```
+
+```sh
+bun install
+stoneware build      # writes .stoneware/
+bun server.ts
+```
+
+**What the host must provide:** the Bun runtime, plus three things on disk at request time —
+`routes/` (its filenames are read on every request), `.stoneware/islands.json` (the build manifest),
+and `public/` if you serve assets. A directory that is only ever *scanned* is invisible to a bundler
+tracing imports, which is what makes the next table matter.
+
+| Host | Runs Bun | Ships whole directory | |
+|---|---|---|---|
+| VPS / Docker / Fly / Railway / Render | yes | yes | works as-is |
+| Vercel | yes | **no — bundles** | needs `includeFiles` |
+| Netlify Functions | no | — | wrong runtime |
+| Cloudflare Workers | no | — | wrong runtime |
+
+Cloudflare runs V8 isolates and Netlify Functions run Node, so neither can host a Stoneware server.
+Those would need a static prerender, which v0.1 does not do.
+
+### Vercel
+
+Vercel's Bun **framework preset** detects a single `Bun.serve()` in a root `server.ts` and routes all
+requests through it. It needs `bun.lock` present and four lines of config:
+
+```json
+{
+  "framework": "bun",
+  "bunVersion": "1.x",
+  "buildCommand": "bun node_modules/stoneware/bin/stoneware.mjs build"
+}
+```
+
+> **`"framework": "bun"` is the line that matters.** If the preset is left as *Other*, Vercel treats
+> the project as a static build: `server.ts` is never detected, no function is created, and every
+> path returns `404: NOT_FOUND` — even though the build log reports success. Setting it in
+> `vercel.json` overrides Project Settings, so it is version-controlled rather than a dashboard
+> click someone has to remember.
+
+Set `STONEWARE_CSRF_SECRET` as a project environment variable. If the app is a subdirectory of a
+larger repo, set Root Directory to it — Vercel still clones the whole repository and only changes
+directory into it.
+
+> **Do not add a `functions` block for this.** `functions` patterns only match Serverless Functions
+> inside an `api/` directory; with the framework preset there is no `api/`, and the build fails with
+> *"The pattern `server.ts` … doesn't match any Serverless Functions inside the `api` directory."*
+> There is no `includeFiles` equivalent for the preset.
+
+If the function starts but crashes, the likely cause is that `routes/` or `.stoneware/islands.json`
+did not reach the runtime. A serverless filesystem is read-only outside `/tmp`, so a missing build
+manifest makes the server fall back to rebuilding island bundles, and that write fails in a way that
+looks unrelated to the cause. Read the **function log**, not the page — it names the missing path.
+
+The fallback, if the preset ever proves not to carry those directories, is the `/api` model: move the
+entry to `api/server.ts` and add rewrites. `functions.includeFiles` *does* apply there, because the
+pattern then matches a real function under `api/`.
+
 ## Documentation site
 
 The documentation site is built with Stoneware and lives in its own repository:

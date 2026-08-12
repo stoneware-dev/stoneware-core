@@ -18,7 +18,7 @@ import { renderToString } from "./render.ts";
 import { Router } from "./router.ts";
 import type { IslandManifest } from "./build.ts";
 import type { StonewareConfig, ResolvedConfig } from "./config.ts";
-import type { ActionRoute, HTTPMethod, MatchedRoute, PageRoute } from "./router.ts";
+import type { ActionRoute, HTTPMethod, PageRoute } from "./router.ts";
 import type { Component } from "./types.ts";
 
 export interface StonewareApp {
@@ -76,10 +76,25 @@ export async function createApp(
     // A production build already emitted the chunks and the manifest; rebuilding
     // them at boot would be wasted work and would change hashed filenames.
     const manifestPath = join(config.outDir, ISLAND_MANIFEST_FILE);
-    if (!dev && (await Bun.file(manifestPath).exists())) {
-      islandManifest = (await Bun.file(manifestPath).json()) as IslandManifest;
-      staticDir = join(config.outDir, "static");
-      return;
+    if (!dev) {
+      if (await Bun.file(manifestPath).exists()) {
+        islandManifest = (await Bun.file(manifestPath).json()) as IslandManifest;
+        staticDir = join(config.outDir, "static");
+        return;
+      }
+
+      // Never rebuild in production. Falling through to buildIslands() would
+      // write to disk, and a serverless filesystem is read-only outside /tmp —
+      // producing an EROFS crash that reads as unrelated to the real cause.
+      // Even where the write succeeds, the emitted chunks would be missing from
+      // whatever was deployed, so the pages would reference files that are not
+      // there. Failing here names the actual problem.
+      throw new Error(
+        `Island manifest not found at ${manifestPath}.\n` +
+          `Run \`stoneware build\` before starting the server. If this is a deploy, the ` +
+          `build output did not reach the runtime — check that ${config.outDir} is included ` +
+          `in what was deployed.`,
+      );
     }
 
     const built = await buildIslands({ islands: entries, outDir: config.outDir, dev });
