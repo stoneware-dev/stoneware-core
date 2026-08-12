@@ -24,12 +24,13 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "bun test",
+    "test": "bun scripts/link-docs.mjs && bun test",
     "typecheck": "tsc --noEmit && tsc --noEmit -p example",
-    "example": "bun run src/cli/index.ts dev --root example",
-    "docs": "bun run src/cli/index.ts dev --root example",
+    "example": "bun scripts/link-docs.mjs && bun run src/cli/index.ts dev --root example",
+    "docs": "bun scripts/link-docs.mjs && bun run src/cli/index.ts dev --root example",
     "prepublishOnly": "bun test && tsc --noEmit && tsc --noEmit -p example",
-    "typecheck:docs": "tsc --noEmit -p example"
+    "typecheck:docs": "tsc --noEmit -p example",
+    "link:docs": "bun scripts/link-docs.mjs"
   },
   "dependencies": {
     "@preact/signals-core": "^1.8.0"

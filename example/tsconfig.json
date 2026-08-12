@@ -14,24 +14,18 @@
 
     "strict": true,
     "skipLibCheck": true,
-    "types": ["bun"],
+    "types": ["bun"]
 
-    // Everything above is exactly what `create-stoneware` writes into a new
-    // project. The mappings below are the one addition, and they exist only
-    // because this site lives inside the framework's own repo: they point
-    // "stoneware" at the local source so the docs site exercises working-tree
-    // changes rather than the last published release.
+    // No `paths` mapping here, deliberately. An earlier version pointed
+    // "stoneware" at ../src so the docs site would exercise the working tree.
+    // That breaks deployment: Vercel clones the whole repository and only
+    // *changes directory* into this one, so ../src really does exist there and
+    // wins over node_modules — pulling in framework source whose own
+    // dependencies (@preact/signals-core) are not installed here.
     //
-    // On a deploy they are inert. Vercel builds with this directory as the root,
-    // so ../src is not present, and Bun falls back to the `stoneware` installed
-    // from npm — verified behaviour, not an assumption.
-    "paths": {
-      "stoneware": ["../src/index.ts"],
-      "stoneware/jsx-runtime": ["../src/jsx-runtime.ts"],
-      "stoneware/jsx-dev-runtime": ["../src/jsx-runtime.ts"],
-      "stoneware/signals": ["../src/signals.ts"],
-      "stoneware/client": ["../src/client/index.ts"]
-    }
+    // Local development links the repo root into node_modules instead
+    // (`bun run link:docs` from the repo root), which resolves to the same
+    // source without changing how the package is resolved.
   },
-  "include": [".", "../src"]
+  "include": ["."]
 }
