@@ -245,23 +245,20 @@ content-hashed chunk per island and a shared runtime chunk.
 > `Bun.FileSystemRouter`, so `routes/` must exist at runtime. It is read for its filenames, never for
 > its contents.
 
-## The example is the documentation
+## Documentation site
 
-`example/` is Stoneware's own documentation site, built with Stoneware.
+The documentation site is built with Stoneware and lives in its own repository:
+[RANJEETJ06/stoneware-docs](https://github.com/RANJEETJ06/stoneware-docs).
 
-```sh
-bun run example    # or: bun run docs
-```
-
-It is the honest version of a feature list. The site runs under the framework's default CSP with no
-overrides, so if a page there needed an exception that would be a bug in the framework rather than in
-the page. Four islands carry all of its interactivity — an install-command switcher, a live counter,
-a scroll-linked gauge, and a feedback form backed by a server action — and every other page ships no
+It is the honest version of a feature list. The site runs under this framework's default CSP with no
+overrides, so if a page there needed an exception that would be a bug here rather than in the page.
+Four islands carry all of its interactivity — an install-command switcher, a live counter, a
+scroll-linked gauge, and a feedback form backed by a server action — and every other page ships no
 JavaScript at all. Code samples are syntax-highlighted on the server, so even that costs nothing.
 
-The scroll gauge is worth a look if you are curious how islands cope with a strict CSP: it writes a
-CSS custom property through the CSSOM rather than a `style` attribute, because `style-src 'self'`
-blocks the latter.
+It is kept separate on purpose: it consumes `stoneware` from npm exactly as any other project does,
+so it cannot quietly depend on unreleased behaviour, and its deployment needs never leak into the
+framework's own tooling.
 
 ## Testing
 
@@ -272,10 +269,11 @@ bun test
 - **Unit** — renderer and escaping, router matching, CSRF verification.
 - **Client runtime** — hydration and signal bindings, against a real DOM via happy-dom.
 - **Integration** — one group per milestone, run against `test/fixture/`, a deliberately minimal app.
-- **Smoke** — the docs site builds, serves, and upholds the claims it makes about itself.
+- **Budgets** — the client runtime's gzipped size, so the byte counts published above cannot
+  silently become false.
 
-Integration tests run against a fixture rather than `example/` on purpose: assertions on exact markup
-should not break every time documentation copy is reworded.
+Everything runs against `test/fixture/` rather than a real site: assertions on exact markup should
+answer to framework behaviour only, never to editorial changes in someone's content.
 
 ## Status
 

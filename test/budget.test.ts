@@ -1,10 +1,10 @@
 /**
  * Payload budgets.
  *
- * The README and the "What it solves" page publish concrete byte counts. Those
- * are the most checkable claims the project makes, so they are checked here: if
- * the client runtime grows past its budget, this fails and the documented
- * numbers get corrected rather than quietly becoming false.
+ * The README publishes concrete byte counts for the client runtime. Those are
+ * the most checkable claims the project makes, so they are checked here: if the
+ * runtime grows past its budget this fails, and the documented numbers get
+ * corrected rather than quietly becoming false.
  *
  * Budgets are ceilings with headroom, not exact sizes — this should catch a
  * regression, not fail on every refactor.
@@ -16,7 +16,7 @@ import { basename, join } from "node:path";
 import { buildIslands } from "../src/build.ts";
 import { discoverIslands } from "../src/islands.ts";
 
-const SITE_ROOT = join(import.meta.dir, "..", "example");
+const FIXTURE_ROOT = join(import.meta.dir, "fixture");
 const OUT_DIR = join(import.meta.dir, "..", ".stoneware-budget");
 
 /** Gzipped ceilings in bytes. Documented figures must stay under these. */
@@ -30,7 +30,7 @@ const BUDGET = {
 let chunks: { name: string; gzip: number }[] = [];
 
 beforeAll(async () => {
-  const islands = await discoverIslands(join(SITE_ROOT, "islands"));
+  const islands = await discoverIslands(join(FIXTURE_ROOT, "islands"));
   const { staticDir } = await buildIslands({ islands, outDir: OUT_DIR, dev: false });
 
   const glob = new Bun.Glob("*.js");
@@ -55,16 +55,17 @@ describe("client payload", () => {
   });
 
   test("a trivial island's own chunk stays tiny", () => {
-    const counter = chunks.find((chunk) => chunk.name.startsWith("LiveCounter-"));
+    const counter = chunks.find((chunk) => chunk.name.startsWith("Counter-"));
     expect(counter).toBeDefined();
     expect(counter!.gzip).toBeLessThanOrEqual(BUDGET.smallestIsland);
   });
 
   test("islands are split rather than duplicated into one bundle", () => {
-    // Four islands plus at least one shared chunk. If splitting regressed, the
-    // shared runtime would be inlined into each entry and this count would drop.
+    // Both fixture islands, plus at least one shared chunk. If splitting
+    // regressed the shared runtime would be inlined into each entry, and the
+    // chunk count would collapse to the entry count.
     const entries = chunks.filter((chunk) => !chunk.name.startsWith("chunk-"));
-    expect(entries.length).toBe(4);
+    expect(entries.length).toBe(2);
     expect(chunks.length).toBeGreaterThan(entries.length);
   });
 

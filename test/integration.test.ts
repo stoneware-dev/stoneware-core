@@ -2,9 +2,8 @@
  * Integration tests: request in, expected HTML out (CLAUDE.md §15).
  *
  * One block per v0.1 milestone, run against test/fixture. The fixture exists so
- * these assertions describe framework behavior only - editing documentation
- * copy in example/ can never break them. A separate smoke block checks that the
- * docs site itself still builds and serves.
+ * these assertions describe framework behavior only - editorial changes to any
+ * real site's content can never break them.
  */
 
 import { beforeAll, describe, expect, test } from "bun:test";

@@ -3,7 +3,7 @@
 A deliberately minimal Stoneware app that exists only for the test suite.
 
 Tests assert on exact markup, so they need an app whose content never changes for
-editorial reasons. `example/` is the documentation site and its copy is rewritten
+editorial reasons. The documentation site lives in its own repository and its copy is rewritten
 freely; pointing integration tests at it would mean every wording change breaks a
 test, which trains people to edit assertions instead of reading failures.
 
