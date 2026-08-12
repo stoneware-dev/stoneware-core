@@ -135,6 +135,30 @@ Two things the renderer refuses outright, because escaping cannot make them safe
 - Interpolating dynamic values into `<script>` or `<style>` bodies.
 - Attribute names that could break out of a tag (relevant when spreading untrusted objects).
 
+## Styling
+
+Put a `.css` file next to the code it styles:
+
+```
+routes/index.tsx      lib/Card.tsx        islands/Counter.tsx
+routes/index.css      lib/Card.css        islands/Counter.css
+```
+
+The build collects every stylesheet under `routes/`, `islands/` and `lib/`,
+bundles them into one content-hashed file, and injects the `<link>` into `<head>`
+automatically. There is no import to write and no `<link>` to maintain.
+
+Membership is by **location, not by `import`**. Routes and `lib/` are server
+modules the bundler never sees — an `import "./Card.css"` there resolves to a
+path string at runtime and would never be collected. Scanning gives one rule for
+all three directories instead of a different one per directory. Files are sorted
+before bundling, so the cascade is deterministic and the content hash only
+changes when the CSS does.
+
+> **No CSS Modules.** Bun's *runtime* returns the file path rather than the class
+> map, so a server render and a client bundle would disagree on class names —
+> and islands are rendered by both. Scoping is naming discipline for now.
+
 ## Islands and signals
 
 ```tsx
@@ -230,12 +254,26 @@ Every response leaves through one function that applies these headers, so a new 
 them. The dev server serves its live-reload client as a real file rather than an inline script,
 specifically so development runs under the same CSP as production.
 
+## Caching
+
+Set automatically, and the distinction matters:
+
+| Response | Header |
+|---|---|
+| Hashed island chunks and stylesheet | `immutable, max-age=31536000` — the name contains the content hash |
+| `public/` assets | `no-cache` + `ETag` — revalidated, so a deploy is picked up immediately |
+| HTML with no CSRF token | `public, no-cache` + `ETag` — a repeat request costs one 304 |
+| HTML carrying a CSRF token | `private, no-store` — never shared, or one visitor gets another's token |
+
+`no-cache` means *revalidate before use*, not *do not store*.
+
 ## CLI
 
 ```
 stoneware dev     Start the dev server with hot reload
 stoneware build   Production build (server bundle + island chunks)
 stoneware start   Run the production server bundle
+stoneware export  Prerender every page to static HTML
 ```
 
 `stoneware build` emits one server bundle with every route and island statically imported, plus one
@@ -281,8 +319,30 @@ tracing imports, which is what makes the next table matter.
 | Netlify Functions | no | — | wrong runtime |
 | Cloudflare Workers | no | — | wrong runtime |
 
-Cloudflare runs V8 isolates and Netlify Functions run Node, so neither can host a Stoneware server.
-Those would need a static prerender, which v0.1 does not do.
+Cloudflare runs V8 isolates and Netlify Functions run Node, so neither can host a Stoneware *server* —
+but `stoneware export` covers them.
+
+### Static export
+
+```sh
+stoneware export --out dist
+```
+
+Every page is fetched through the ordinary request pipeline, so the HTML on disk is byte-identical to
+what the server would have sent. Output is `dist/<path>/index.html` plus the island chunks and
+`public/`, deployable to Cloudflare Pages, Netlify, GitHub Pages, or any CDN.
+
+A route with `[params]` is only prerendered if its module says which pages exist:
+
+```ts
+export function staticPaths() {
+  return listPosts().map((post) => ({ slug: post.slug }));
+}
+```
+
+Two kinds of page are skipped and reported rather than written: server actions, and **any page that
+renders a CSRF token**. A prerendered token would be frozen into the file and served to every
+visitor, which is no protection at all — so it is never written to disk.
 
 ### Vercel
 
