@@ -1,0 +1,114 @@
+name: Publish
+
+# Releases are cut by pushing a tag, so the published version is always one that
+# exists in git history. workflow_dispatch is kept for re-running a failed job
+# without inventing a second tag.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Required for npm provenance, which links the published tarball back to
+      # this workflow run.
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          # Pinned rather than "latest": the framework's own engines floor is
+          # >=1.3.0, and a silent major bump should break a PR, not a release.
+          bun-version: 1.3.14
+
+      # npm does the publishing even though Bun does everything else — it is
+      # what talks to the registry, handles provenance, and reads NODE_AUTH_TOKEN.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - run: bun install --frozen-lockfile
+
+      - name: Test
+        run: bun test
+
+      - name: Typecheck
+        run: bunx tsc --noEmit
+
+      # Both packages ship together: the project create-stoneware generates
+      # declares a dependency on stoneware, so a version skew between them
+      # produces a scaffold that cannot install. Checked before anything is
+      # pushed to the registry, because a half-published pair is worse than a
+      # failed run.
+      - name: Check versions agree with the tag
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME#v}"
+          ROOT=$(node -p "require('./package.json').version")
+          CREATE=$(node -p "require('./create/package.json').version")
+
+          echo "tag=$TAG  stoneware=$ROOT  create-stoneware=$CREATE"
+
+          if [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$TAG" != "$ROOT" ]; then
+            echo "::error::Tag v$TAG does not match package.json version $ROOT"
+            exit 1
+          fi
+          if [ "$ROOT" != "$CREATE" ]; then
+            echo "::error::stoneware ($ROOT) and create-stoneware ($CREATE) must share a version"
+            exit 1
+          fi
+          echo "VERSION=$ROOT" >> "$GITHUB_ENV"
+
+      - name: Check neither version is already on npm
+        run: |
+          set -uo pipefail
+          for pkg in stoneware create-stoneware; do
+            if npm view "$pkg@$VERSION" version >/dev/null 2>&1; then
+              echo "::error::$pkg@$VERSION is already published; bump the version"
+              exit 1
+            fi
+          done
+          echo "both names are free at $VERSION"
+
+      # A publish that silently drops a bin entry still "succeeds", which is how
+      # a broken CLI shipped once already. Fail the run instead.
+      - name: Reject a publish npm would silently rewrite
+        run: |
+          set -uo pipefail
+          for dir in . create; do
+            if (cd "$dir" && npm publish --dry-run --ignore-scripts 2>&1) | grep -q "invalid and removed"; then
+              echo "::error::npm would strip a field from $dir/package.json (check bin paths)"
+              exit 1
+            fi
+          done
+          echo "no fields would be rewritten"
+
+      # stoneware first: a scaffold created seconds after release must be able to
+      # resolve its dependency.
+      - name: Publish stoneware
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish create-stoneware
+        working-directory: create
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Verify both are live
+        run: |
+          set -euo pipefail
+          for pkg in stoneware create-stoneware; do
+            npm view "$pkg@$VERSION" version
+          done
