@@ -25,10 +25,11 @@
   ],
   "scripts": {
     "test": "bun test",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p example",
     "example": "bun run src/cli/index.ts dev --root example",
     "docs": "bun run src/cli/index.ts dev --root example",
-    "prepublishOnly": "bun test && tsc --noEmit"
+    "prepublishOnly": "bun test && tsc --noEmit && tsc --noEmit -p example",
+    "typecheck:docs": "tsc --noEmit -p example"
   },
   "dependencies": {
     "@preact/signals-core": "^1.8.0"
