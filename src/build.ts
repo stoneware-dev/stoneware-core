@@ -11,6 +11,7 @@
  * code is not excluded by a heuristic, it is simply never handed to the bundler.
  */
 
+import { existsSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import type { IslandEntry } from "./islands.ts";
@@ -20,6 +21,72 @@ export const CLIENT_ASSET_PREFIX = "/_stoneware";
 
 /** Filename of the island manifest left in `outDir` by a build. */
 export const ISLAND_MANIFEST_FILE = "islands.json";
+
+/** Records the hashed stylesheet URL, when the project has any CSS. */
+export const STYLESHEET_MANIFEST_FILE = "stylesheet.txt";
+
+/**
+ * Collect every stylesheet that sits beside the code it styles.
+ *
+ * A `.css` file anywhere under routes/, islands/ or lib/ is part of the site's
+ * styles. Membership is by location rather than by an `import` statement,
+ * because routes and lib are server modules that are never handed to the
+ * bundler — an import there would resolve to a path string at runtime and the
+ * bundler would never see it. Scanning keeps one rule for all three directories
+ * instead of a different one per directory.
+ *
+ * Everything is concatenated into a single hashed file: one request, cached
+ * forever, and no ordering surprises between pages.
+ */
+export async function buildStyles(options: {
+  dirs: string[];
+  outDir: string;
+  dev?: boolean;
+}): Promise<string | null> {
+  const glob = new Bun.Glob("**/*.css");
+  const sheets: string[] = [];
+
+  for (const dir of options.dirs) {
+    if (!existsSync(dir)) continue;
+    for await (const match of glob.scan({ cwd: dir, onlyFiles: true, absolute: true })) {
+      sheets.push(match);
+    }
+  }
+
+  if (sheets.length === 0) return null;
+
+  // Sorted so the cascade is deterministic: the same sources must always
+  // produce the same bytes, or the content hash churns on every build.
+  sheets.sort();
+
+  const outDir = resolve(options.outDir);
+  const entriesDir = join(outDir, "entries");
+  await mkdir(entriesDir, { recursive: true });
+
+  const entryPath = join(entriesDir, "styles.css");
+  const entry = sheets
+    .map((sheet) => `@import ${JSON.stringify(sheet.replace(/\\/g, "/"))};`)
+    .join("\n");
+  await Bun.write(entryPath, entry + "\n");
+
+  const result = await Bun.build({
+    entrypoints: [entryPath],
+    outdir: join(outDir, "static"),
+    minify: !options.dev,
+    naming: { entry: "styles-[hash].css", asset: "[name]-[hash].[ext]" },
+  });
+
+  if (!result.success) {
+    throw new Error(`Stylesheet build failed:\n${result.logs.map(String).join("\n")}`);
+  }
+
+  const css = result.outputs.find((artifact) => artifact.path.endsWith(".css"));
+  if (!css) throw new Error("Stylesheet build produced no CSS output.");
+
+  const href = `${CLIENT_ASSET_PREFIX}/${basename(css.path)}`;
+  await Bun.write(join(outDir, STYLESHEET_MANIFEST_FILE), href);
+  return href;
+}
 
 /** Maps island name to the public URL of its entry chunk. */
 export type IslandManifest = Record<string, string>;

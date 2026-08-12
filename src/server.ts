@@ -8,7 +8,13 @@
  */
 
 import { join, resolve, sep } from "node:path";
-import { CLIENT_ASSET_PREFIX, ISLAND_MANIFEST_FILE, buildIslands } from "./build.ts";
+import {
+  CLIENT_ASSET_PREFIX,
+  ISLAND_MANIFEST_FILE,
+  STYLESHEET_MANIFEST_FILE,
+  buildIslands,
+  buildStyles,
+} from "./build.ts";
 import { SECURITY_HEADERS, resolveConfig } from "./config.ts";
 import { buildDocument } from "./document.ts";
 import { verifyRequest } from "./csrf.ts";
@@ -56,6 +62,7 @@ export async function createApp(
 
   let islandRegistry = new Map<Component<any>, string>();
   let islandManifest: IslandManifest = {};
+  let stylesheet: string | null = null;
   let staticDir = join(config.outDir, "static");
 
   async function rebuildIslands(): Promise<void> {
@@ -80,6 +87,9 @@ export async function createApp(
       if (await Bun.file(manifestPath).exists()) {
         islandManifest = (await Bun.file(manifestPath).json()) as IslandManifest;
         staticDir = join(config.outDir, "static");
+
+        const stylesRef = Bun.file(join(config.outDir, STYLESHEET_MANIFEST_FILE));
+        stylesheet = (await stylesRef.exists()) ? (await stylesRef.text()).trim() || null : null;
         return;
       }
 
@@ -100,6 +110,14 @@ export async function createApp(
     const built = await buildIslands({ islands: entries, outDir: config.outDir, dev });
     islandManifest = built.manifest;
     staticDir = built.staticDir;
+
+    // After the islands, never before: buildIslands clears the static directory,
+    // which would take the stylesheet with it.
+    stylesheet = await buildStyles({
+      dirs: [config.routesDir, config.islandsDir, join(config.root, "lib")],
+      outDir: config.outDir,
+      dev,
+    });
   }
 
   await rebuildIslands();
@@ -191,6 +209,7 @@ export async function createApp(
       manifest: islandManifest,
       title: route.name === "/" ? "Home" : route.name.replace(/^\//, ""),
       suffix: options.documentSuffix,
+      stylesheet,
     });
 
     const headers = new Headers({ "Content-Type": "text/html; charset=utf-8" });

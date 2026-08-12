@@ -20,6 +20,8 @@ export interface DocumentOptions {
   lang?: string;
   /** Extra markup appended after the island scripts. Dev-server use only. */
   suffix?: string;
+  /** Hashed URL of the bundled co-located stylesheet, when the project has CSS. */
+  stylesheet?: string | null;
 }
 
 const DOCTYPE = "<!DOCTYPE html>";
@@ -30,7 +32,13 @@ export function buildDocument(options: DocumentOptions): string {
     renderIslandPayload(islands) + renderIslandScripts(islands, manifest) + (options.suffix ?? "");
 
   if (isFullDocument(html)) {
-    return DOCTYPE + "\n" + injectBeforeBodyClose(html, scripts);
+    // A page that owns its whole document still gets the bundled stylesheet:
+    // co-located CSS is collected by the build, so there is no <link> for the
+    // author to write and none to forget.
+    const withStyles = options.stylesheet
+      ? injectBeforeHeadClose(html, styleLink(options.stylesheet))
+      : html;
+    return DOCTYPE + "\n" + injectBeforeBodyClose(withStyles, scripts);
   }
 
   const lang = options.lang ?? "en";
@@ -40,7 +48,9 @@ export function buildDocument(options: DocumentOptions): string {
     `${DOCTYPE}\n<html lang="${lang}">` +
     `<head><meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width, initial-scale=1">` +
-    `<title>${title}</title></head>` +
+    `<title>${title}</title>` +
+    (options.stylesheet ? styleLink(options.stylesheet) : "") +
+    `</head>` +
     `<body>${html}${scripts}</body></html>`
   );
 }
@@ -92,5 +102,20 @@ function injectBeforeBodyClose(html: string, injection: string): string {
 
   const index = html.toLowerCase().lastIndexOf("</body>");
   if (index === -1) return html + injection;
+  return html.slice(0, index) + injection + html.slice(index);
+}
+
+function styleLink(href: string): string {
+  return `<link rel="stylesheet" href="${Bun.escapeHTML(href)}">`;
+}
+
+/**
+ * Put the stylesheet in <head>, where a browser can start fetching it before it
+ * has parsed the body. Matching the *first* </head> is right here: unlike
+ * </body>, it cannot plausibly appear in page content before the real one.
+ */
+function injectBeforeHeadClose(html: string, injection: string): string {
+  const index = html.toLowerCase().indexOf("</head>");
+  if (index === -1) return html;
   return html.slice(0, index) + injection + html.slice(index);
 }

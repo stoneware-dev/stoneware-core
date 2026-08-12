@@ -160,6 +160,26 @@ describe("milestone 1 - static SSR", () => {
     expect(response.headers.get("etag")).toBeNull();
   });
 
+  test("co-located CSS is bundled and linked automatically", async () => {
+    // lib/card.css and islands/badge.css sit beside their code, not in public/.
+    // Neither is imported anywhere: membership is by location, because routes
+    // and lib are server modules the bundler never sees.
+    const html = await getHTML("/plain");
+    const href = html.match(/<link rel="stylesheet" href="([^"]+)">/)?.[1];
+
+    expect(href).toBeDefined();
+    expect(href).toMatch(/^\/_stoneware\/styles-[^.]+\.css$/);
+
+    const sheet = await (await get(href!)).text();
+    expect(sheet).toContain("fixture-card");
+    expect(sheet).toContain("fixture-badge");
+  });
+
+  test("the stylesheet link goes in <head>, before the body", async () => {
+    const html = await getHTML("/plain");
+    expect(html.indexOf("<link rel=\"stylesheet\"")).toBeLessThan(html.indexOf("</head>"));
+  });
+
   test("refuses path traversal out of the asset directories", async () => {
     expect((await get("/_stoneware/..%2f..%2fpackage.json")).status).toBe(404);
   });
@@ -193,7 +213,9 @@ describe("milestone 2 - islands", () => {
   test("a page with no islands ships no JavaScript at all", async () => {
     const html = await getHTML("/plain");
     expect(html).not.toContain("<script");
-    expect(html).not.toContain("/_stoneware/");
+    // Not "nothing under /_stoneware/": the bundled stylesheet is served from
+    // there too, and a stylesheet is not JavaScript. The claim is about JS.
+    expect(html).not.toMatch(/\/_stoneware\/[^"]+\.js/);
   });
 });
 
