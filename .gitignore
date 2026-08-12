@@ -1,0 +1,9 @@
+node_modules/
+.kiln/
+*.log
+
+# Secrets. Bun loads these automatically; .env.example is the tracked template.
+.env
+.env.*
+!.env.example
+.claude
