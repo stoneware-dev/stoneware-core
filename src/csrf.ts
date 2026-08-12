@@ -44,7 +44,7 @@ export async function verifyRequest(
     return {
       ok: false,
       reason:
-        `Missing CSRF token. Submit forms with Kiln's <Form> helper, or send the token ` +
+        `Missing CSRF token. Submit forms with Sinter's <Form> helper, or send the token ` +
         `in the "${config.csrf.headerName}" header.`,
     };
   }

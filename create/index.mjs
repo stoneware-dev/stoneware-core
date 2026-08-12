@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
- * `npx create-kiln my-site` / `bunx create-kiln my-site`
+ * `npx create-sinter my-site` / `bunx create-sinter my-site`
  *
  * Plain JavaScript with a Node shebang, and deliberately so: this is the one
- * command someone runs *before* they have Kiln, and possibly before they have
+ * command someone runs *before* they have Sinter, and possibly before they have
  * Bun. Requiring Bun to create the project would put the runtime requirement in
  * front of the thing that explains the runtime requirement.
  *
  * Nothing here touches a `Bun.*` API, so the same file runs under both. The
- * generated project is Bun-only - `kiln dev` and friends need it - and this
+ * generated project is Bun-only - `sinter dev` and friends need it - and this
  * script says so on the way out if Bun is missing.
  */
 
@@ -23,8 +23,8 @@ const files = {
         name,
         private: true,
         type: "module",
-        scripts: { dev: "kiln dev", build: "kiln build", start: "kiln start" },
-        dependencies: { kiln: "^0.1.0" },
+        scripts: { dev: "sinter dev", build: "sinter build", start: "sinter start" },
+        dependencies: { sinter: "^0.1.0" },
         devDependencies: { "@types/bun": "^1.3.0" },
         engines: { bun: ">=1.3.0" },
       },
@@ -45,7 +45,7 @@ const files = {
           verbatimModuleSyntax: true,
           noEmit: true,
           jsx: "react-jsx",
-          jsxImportSource: "kiln",
+          jsxImportSource: "sinter",
           strict: true,
           skipLibCheck: true,
           types: ["bun"],
@@ -55,12 +55,12 @@ const files = {
       2,
     ) + "\n",
 
-  "kiln.config.ts": () => `import { defineConfig } from "kiln";
+  "sinter.config.ts": () => `import { defineConfig } from "sinter";
 
 export default defineConfig({
   port: 3000,
   // The framework's default Content-Security-Policy applies unless you replace
-  // it here. The CSRF secret comes from KILN_CSRF_SECRET in .env - keep it out
+  // it here. The CSRF secret comes from SINTER_CSRF_SECRET in .env - keep it out
   // of this file so it is never committed.
 });
 `,
@@ -70,8 +70,8 @@ export default defineConfig({
       "# Dependencies",
       "node_modules/",
       "",
-      "# Build output. `kiln build` writes here; deleting it is always safe.",
-      ".kiln/",
+      "# Build output. `sinter build` writes here; deleting it is always safe.",
+      ".sinter/",
       "",
       "# Secrets. Bun loads .env files natively, so they never reach the repo.",
       "# .env.example is the tracked template and must stay tracked.",
@@ -99,14 +99,14 @@ export default defineConfig({
   // Generated with a real secret so `bun run dev` starts clean, and so nobody is
   // tempted to paste a placeholder into production. Bun reads .env natively, so
   // there is no dotenv dependency.
-  ".env": () => `KILN_CSRF_SECRET=${randomUUID()}${randomUUID()}\n`,
+  ".env": () => `SINTER_CSRF_SECRET=${randomUUID()}${randomUUID()}\n`,
 
   ".env.example": () => `# Copy to .env and set a unique value per environment.
 # Signs CSRF tokens: rotating it invalidates every form currently rendered.
-KILN_CSRF_SECRET=
+SINTER_CSRF_SECRET=
 `,
 
-  "routes/index.tsx": () => `import type { PageProps } from "kiln";
+  "routes/index.tsx": () => `import type { PageProps } from "sinter";
 import Counter from "../islands/Counter.tsx";
 
 export default function Home(_props: PageProps) {
@@ -115,7 +115,7 @@ export default function Home(_props: PageProps) {
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>Welcome to kiln</title>
+        <title>Welcome to sinter</title>
         <link rel="stylesheet" href="/styles.css" />
       </head>
       <body>
@@ -133,7 +133,7 @@ export default function Home(_props: PageProps) {
 }
 `,
 
-  "islands/Counter.tsx": () => `import { signal } from "kiln/signals";
+  "islands/Counter.tsx": () => `import { signal } from "sinter/signals";
 
 // Module-scope state is shared by every Counter on the page. For per-instance
 // state, create the signal inside the function.
@@ -175,7 +175,7 @@ button {
 
   "README.md": (name) => `# ${name}
 
-Built with [kiln](https://github.com/kiln/kiln) - server-first, Bun-native.
+Built with [sinter](https://github.com/RANJEETJ06/Sinter) - server-first, Bun-native.
 
     bun install
     bun run dev
@@ -191,7 +191,7 @@ Built with [kiln](https://github.com/kiln/kiln) - server-first, Bun-native.
 
 Bun reads \`.env\` automatically - there is no dotenv dependency.
 
-\`.env\` was generated with a unique \`KILN_CSRF_SECRET\` and is gitignored. Set a
+\`.env\` was generated with a unique \`SINTER_CSRF_SECRET\` and is gitignored. Set a
 different one per environment; \`.env.example\` is the tracked template.
 `,
 };
@@ -207,7 +207,7 @@ function main() {
   const target = process.argv[2];
 
   if (!target || target.startsWith("-")) {
-    console.log("Usage: bunx create-kiln <directory>   (npx also works)");
+    console.log("Usage: bunx create-sinter <directory>   (npx also works)");
     process.exit(target ? 0 : 1);
   }
 
@@ -215,7 +215,7 @@ function main() {
   const name = basename(dir);
 
   if (directoryExists(dir) && readdirSync(dir).length > 0) {
-    console.error(`[kiln] ${dir} already exists and is not empty.`);
+    console.error(`[sinter] ${dir} already exists and is not empty.`);
     process.exit(1);
   }
 
@@ -233,7 +233,7 @@ function main() {
 
   if (!isBun) {
     console.log(
-      "\nNote: the project was scaffolded with Node, but Kiln itself runs on Bun.\n" +
+      "\nNote: the project was scaffolded with Node, but Sinter itself runs on Bun.\n" +
         "If you do not have it yet: https://bun.sh/docs/installation",
     );
   }

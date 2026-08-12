@@ -21,7 +21,7 @@ const VOID_ELEMENTS = new Set([
 ]);
 
 /**
- * Elements whose content is raw text (CDATA) rather than markup. Kiln refuses
+ * Elements whose content is raw text (CDATA) rather than markup. Sinter refuses
  * to interpolate dynamic values into these at all - escaping rules inside
  * `<script>`/`<style>` differ from HTML text, and getting them subtly wrong is
  * how injection bugs happen. Use a dedicated helper or an external file.
@@ -50,7 +50,7 @@ export interface CollectedIsland {
 
 export interface RenderOptions {
   /**
-   * Maps a component function to its island name. Kiln identifies islands by
+   * Maps a component function to its island name. Sinter identifies islands by
    * function identity rather than by a marker the author has to write, so a
    * file in `islands/` is an island purely because of where it lives
    * (CLAUDE.md §5).
@@ -158,7 +158,7 @@ function renderElement(tag: string, props: Props, ctx: Context): string {
 /**
  * `<script>` and `<style>` bodies must be literal, author-written strings.
  * Escaping cannot make an arbitrary value safe in these contexts, so rather
- * than pretend otherwise Kiln rejects anything dynamic.
+ * than pretend otherwise Sinter rejects anything dynamic.
  */
 function renderRawTextContent(tag: string, children: Child): string {
   const parts = Array.isArray(children) ? children : [children];
@@ -253,7 +253,7 @@ const UNITLESS_PROPERTIES = new Set([
  * error rather than silently mis-hydrating.
  */
 function renderIsland(name: string, component: Component<any>, props: Props, ctx: Context): string {
-  const id = `kiln-${ctx.collected.length}`;
+  const id = `sinter-${ctx.collected.length}`;
 
   assertSerializableProps(name, props);
   ctx.collected.push({ name, id, props });
@@ -278,8 +278,8 @@ function renderIsland(name: string, component: Component<any>, props: Props, ctx
 
   const marked: Props = {
     ...resolved.props,
-    "data-kiln-island": name,
-    "data-kiln-id": id,
+    "data-sinter-island": name,
+    "data-sinter-id": id,
   };
 
   return renderElement(resolved.type, marked, ctx);
@@ -328,5 +328,5 @@ function assertSerializableProps(name: string, props: Props): void {
 export function renderIslandPayload(islands: CollectedIsland[]): string {
   if (islands.length === 0) return "";
   const data = islands.map(({ name, id, props }) => ({ name, id, props }));
-  return `<script type="application/json" id="kiln-islands">${safeJSONStringify(data)}</script>`;
+  return `<script type="application/json" id="sinter-islands">${safeJSONStringify(data)}</script>`;
 }

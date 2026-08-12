@@ -16,7 +16,7 @@ import { basename, join, resolve } from "node:path";
 import type { IslandEntry } from "./islands.ts";
 
 /** URL prefix under which built client chunks are served. */
-export const CLIENT_ASSET_PREFIX = "/_kiln";
+export const CLIENT_ASSET_PREFIX = "/_sinter";
 
 /** Filename of the island manifest left in `outDir` by a build. */
 export const ISLAND_MANIFEST_FILE = "islands.json";
@@ -26,7 +26,7 @@ export type IslandManifest = Record<string, string>;
 
 export interface BuildIslandsOptions {
   islands: IslandEntry[];
-  /** Build output root, typically `<project>/.kiln`. */
+  /** Build output root, typically `<project>/.sinter`. */
   outDir: string;
   dev?: boolean;
 }
@@ -50,7 +50,7 @@ function entrySource(island: IslandEntry): string {
   // path would otherwise contain backslash escape sequences.
   const importPath = island.path.replace(/\\/g, "/");
   return [
-    `import { hydrate } from ${JSON.stringify("kiln/client")};`,
+    `import { hydrate } from ${JSON.stringify("sinter/client")};`,
     `import Island from ${JSON.stringify(importPath)};`,
     ``,
     `hydrate(${JSON.stringify(island.name)}, Island);`,

@@ -10,7 +10,7 @@
     "noEmit": true,
 
     "jsx": "react-jsx",
-    "jsxImportSource": "kiln",
+    "jsxImportSource": "sinter",
 
     "strict": true,
     "skipLibCheck": true,

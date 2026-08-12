@@ -1,4 +1,4 @@
-import type { PageProps } from "kiln";
+import type { PageProps } from "sinter";
 
 export default function Entry({ params }: PageProps) {
   return (

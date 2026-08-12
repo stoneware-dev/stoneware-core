@@ -1,5 +1,5 @@
-import { raw } from "kiln";
-import type { PageProps } from "kiln";
+import { raw } from "sinter";
+import type { PageProps } from "sinter";
 
 /** No islands: this page must ship zero JavaScript. */
 export default function Plain(_props: PageProps) {

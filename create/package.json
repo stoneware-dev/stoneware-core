@@ -1,0 +1,33 @@
+{
+  "name": "create-sinter",
+  "version": "0.1.0",
+  "description": "Scaffold a new Sinter project. Runs on plain Node, so it works before Bun is installed.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "create-sinter": "./index.mjs"
+  },
+  "files": [
+    "index.mjs",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RANJEETJ06/Sinter.git",
+    "directory": "create"
+  },
+  "homepage": "https://github.com/RANJEETJ06/Sinter#readme",
+  "bugs": {
+    "url": "https://github.com/RANJEETJ06/Sinter/issues"
+  },
+  "keywords": [
+    "sinter",
+    "bun",
+    "create",
+    "scaffold",
+    "starter"
+  ]
+}

@@ -17,11 +17,11 @@ import { buildIslandRegistry, discoverIslands, loadIslands } from "./islands.ts"
 import { renderToString } from "./render.ts";
 import { Router } from "./router.ts";
 import type { IslandManifest } from "./build.ts";
-import type { KilnConfig, ResolvedConfig } from "./config.ts";
+import type { SinterConfig, ResolvedConfig } from "./config.ts";
 import type { ActionRoute, HTTPMethod, MatchedRoute, PageRoute } from "./router.ts";
 import type { Component } from "./types.ts";
 
-export interface KilnApp {
+export interface SinterApp {
   config: ResolvedConfig;
   router: Router;
   islandManifest: IslandManifest;
@@ -45,9 +45,9 @@ export interface CreateAppOptions {
 }
 
 export async function createApp(
-  userConfig: KilnConfig = {},
+  userConfig: SinterConfig = {},
   options: CreateAppOptions = {},
-): Promise<KilnApp> {
+): Promise<SinterApp> {
   const dev = options.dev ?? false;
   const config = resolveConfig(userConfig, dev);
 
@@ -89,7 +89,7 @@ export async function createApp(
 
   await rebuildIslands();
 
-  const app: KilnApp = {
+  const app: SinterApp = {
     config,
     router,
     get islandManifest() {
@@ -106,7 +106,7 @@ export async function createApp(
       try {
         return withSecurityHeaders(await handleRequest(request), config);
       } catch (error) {
-        console.error("[kiln] Unhandled error while serving request:", error);
+        console.error("[sinter] Unhandled error while serving request:", error);
         return withSecurityHeaders(
           errorResponse(500, dev ? String(error) : "Internal Server Error", config),
           config,
@@ -336,7 +336,7 @@ function errorResponse(status: number, message: string, _config: ResolvedConfig)
 /* -------------------------------------------------------------------------- */
 
 export interface ServeResult {
-  app: KilnApp;
+  app: SinterApp;
   /**
    * Derived from `Bun.serve` rather than written out, so it tracks Bun's
    * signature. (`Bun.Server` takes a mandatory type parameter for WebSocket
@@ -346,7 +346,7 @@ export interface ServeResult {
 }
 
 export async function serve(
-  userConfig: KilnConfig = {},
+  userConfig: SinterConfig = {},
   options: CreateAppOptions = {},
 ): Promise<ServeResult> {
   const app = await createApp(userConfig, options);

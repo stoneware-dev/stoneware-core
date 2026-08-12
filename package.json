@@ -1,14 +1,13 @@
 {
-  "name": "kiln",
+  "name": "sinter",
   "version": "0.1.0",
-  "description": "Server-first, Bun-native SSR framework. Static HTML by default, islands for interactivity, signals inside islands, security on by default.",
+  "description": "Bun-native, server-first web framework where HTML is the default and JavaScript is opt-in. Islands for interactivity, signals inside islands, security on before you configure anything.",
   "license": "MIT",
   "type": "module",
   "module": "src/index.ts",
   "types": "src/index.ts",
   "bin": {
-    "kiln": "./bin/kiln.mjs",
-    "create-kiln": "./bin/create-kiln.mjs"
+    "sinter": "./bin/sinter.mjs"
   },
   "exports": {
     ".": "./src/index.ts",
@@ -28,7 +27,8 @@
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "example": "bun run src/cli/index.ts dev --root example",
-    "docs": "bun run src/cli/index.ts dev --root example"
+    "docs": "bun run src/cli/index.ts dev --root example",
+    "prepublishOnly": "bun test && tsc --noEmit"
   },
   "dependencies": {
     "@preact/signals-core": "^1.8.0"
@@ -41,11 +41,22 @@
   "engines": {
     "bun": ">=1.3.0"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RANJEETJ06/Sinter.git"
+  },
+  "homepage": "https://github.com/RANJEETJ06/Sinter#readme",
+  "bugs": {
+    "url": "https://github.com/RANJEETJ06/Sinter/issues"
+  },
   "keywords": [
     "bun",
     "ssr",
     "islands",
     "signals",
-    "server-first"
+    "server-first",
+    "html",
+    "web-framework",
+    "csp"
   ]
 }

@@ -1,4 +1,4 @@
-import { signal } from "kiln/signals";
+import { signal } from "sinter/signals";
 import { tally } from "../lib/state.ts";
 
 const count = signal(0);

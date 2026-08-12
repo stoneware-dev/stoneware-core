@@ -7,7 +7,7 @@
  * site does not use - which is exactly how CSP violations reach production.
  */
 
-const SOCKET_PATH = "/_kiln/live-reload";
+const SOCKET_PATH = "/_sinter/live-reload";
 
 function connect(): void {
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";

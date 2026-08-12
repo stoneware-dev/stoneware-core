@@ -1,9 +1,9 @@
-# kiln
+# sinter
 
 **A Bun-native, server-first web framework where HTML is the default and JavaScript is opt-in.**
 Build content-heavy sites without shipping a client runtime to pages that do not need one.
 
-The web sends a lot of JavaScript to sites that are mostly documents. Kiln inverts the default: every
+The web sends a lot of JavaScript to sites that are mostly documents. Sinter inverts the default: every
 route renders to complete HTML, and a component ships JavaScript only if you put it in `islands/`.
 Escaping, CSRF verification, and a strict CSP are on before you write any configuration.
 
@@ -17,19 +17,19 @@ Measured on this repo's own documentation site, in production:
 | Runtime dependencies | **1** (`@preact/signals-core`) |
 
 ```sh
-bunx create-kiln my-site   # npx create-kiln my-site works too
+bunx create-sinter my-site   # npx create-sinter my-site works too
 cd my-site
 bun install
 bun run dev
 ```
 
 Scaffolding runs on plain Node, so `npx` works before Bun is installed. Everything after that — the
-dev server, the build — runs on Bun, and `kiln` says so with an install link if Bun is missing.
+dev server, the build — runs on Bun, and `sinter` says so with an install link if Bun is missing.
 
 ## What problems it solves
 
 **1. You ship a runtime to render a document.** A blog post is fully known before the response
-finishes; sending a framework so the browser can rebuild it is work nobody asked for. A Kiln page
+finishes; sending a framework so the browser can rebuild it is work nobody asked for. A Sinter page
 with no islands ships zero bytes — asserted by the test suite, not just intended.
 
 **2. The client/server boundary drifts.** When the boundary is a directive that propagates through
@@ -39,7 +39,7 @@ never handed to the bundler, so they *cannot* reach the client.
 
 **3. You hydrate things that will never change.** On a twenty-page site where only the newsletter and
 a calculator are interactive, the header, footer, article and SEO markup have nothing to hydrate.
-Kiln doesn't — they are strings the server produced, and they stay that way.
+Sinter doesn't — they are strings the server produced, and they stay that way.
 
 **4. The component model costs more than it returns here.** Hook ordering, dependency arrays, stale
 closures, and memoization-as-tax are a fair trade for an application UI. For a page that renders once
@@ -48,19 +48,19 @@ once, on the server.
 
 **5. Security is opt-in, and CSP is what everyone skips.** A strict CSP is normally painful because
 frameworks emit inline script and style, so you end up with `unsafe-inline`, nonce plumbing, or
-nothing. Kiln never emits inline executable script, so `script-src 'self'` simply works — this repo's
+nothing. Sinter never emits inline executable script, so `script-src 'self'` simply works — this repo's
 docs site runs under the default policy unmodified, with zero violations.
 
-**6. Hydration mismatches.** Kiln does not reconcile against server markup; it builds the island's
+**6. Hydration mismatches.** Sinter does not reconcile against server markup; it builds the island's
 tree and replaces the marked element. There is nothing to mismatch. (The honest trade: a replacement,
 not a resumption.)
 
 **7. Toolchain sprawl.** Serving, bundling, escaping, CSRF tokens, routing, `.env`, and the test
-runner are all Bun's own APIs. If Bun ships it, Kiln does not add a package that reimplements it.
+runner are all Bun's own APIs. If Bun ships it, Sinter does not add a package that reimplements it.
 
 ### What it does not solve
 
-Kiln has nothing to say about databases, authentication, offline support, realtime collaboration, or
+Sinter has nothing to say about databases, authentication, offline support, realtime collaboration, or
 large-scale client state. It does not make a site automatically fast or automatically secure — it
 removes a category of *framework-level* mistake. Your queries, your auth, and your payload sizes
 remain yours.
@@ -68,9 +68,9 @@ remain yours.
 ### When not to use it
 
 - Genuinely app-like UI — a dashboard, an editor, heavy shared client state. Use a SPA framework.
-- You need client-side routing. Kiln does full page loads.
+- You need client-side routing. Sinter does full page loads.
 - You need streaming SSR, resumability, or partial rendering. Deferred for v0.1.
-- You are not on Bun. Kiln is Bun-native by design, not Node-compatible-via-Bun.
+- You are not on Bun. Sinter is Bun-native by design, not Node-compatible-via-Bun.
 - You need a plugin ecosystem. This is v0.1; there isn't one.
 
 If your page is mostly a document with a few live parts, these trades are nearly all upside. If it is
@@ -92,7 +92,7 @@ export default function Home({ params }: PageProps) {
 ```
 
 **3. Signals, not a bespoke reactivity engine.** Islands use
-[Preact Signals](https://github.com/preactjs/signals) directly, re-exported as `kiln/signals`. Kiln
+[Preact Signals](https://github.com/preactjs/signals) directly, re-exported as `sinter/signals`. Sinter
 does not implement a reactive graph. That is a deliberate scope boundary, not an oversight.
 
 **4. Islands are opt-in by location.** A file under `islands/` hydrates. A file under `routes/` never
@@ -113,7 +113,7 @@ my-site/
     Counter.tsx
   lib/                     behavior functions, shared utilities
   public/                  static assets, served as-is
-  kiln.config.ts
+  sinter.config.ts
 ```
 
 Routing mirrors the Next.js conventions you already know, resolved by `Bun.FileSystemRouter`.
@@ -139,7 +139,7 @@ Two things the renderer refuses outright, because escaping cannot make them safe
 
 ```tsx
 // islands/Counter.tsx
-import { signal } from "kiln/signals";
+import { signal } from "sinter/signals";
 
 const count = signal(0);
 
@@ -193,27 +193,27 @@ The body is verified against a clone, so your handler still receives an unconsum
 For an island doing its own `fetch()`, pass the token in as a prop with `csrfToken()` and send it in
 the `x-csrf-token` header.
 
-Set `KILN_CSRF_SECRET` in production. Without it, a production build refuses to start rather than
+Set `SINTER_CSRF_SECRET` in production. Without it, a production build refuses to start rather than
 falling back to something that appears to work.
 
 ## Environment variables
 
-Bun reads `.env`, `.env.local`, and `.env.<mode>` natively, so Kiln has no dotenv dependency -
+Bun reads `.env`, `.env.local`, and `.env.<mode>` natively, so Sinter has no dotenv dependency -
 consistent with the rule that the framework uses Bun's own APIs rather than npm packages that
 reimplement them.
 
-`create-kiln` generates a `.env` containing a freshly random `KILN_CSRF_SECRET`, gitignores it, and
+`create-sinter` generates a `.env` containing a freshly random `SINTER_CSRF_SECRET`, gitignores it, and
 leaves `.env.example` as the tracked template:
 
 ```
-KILN_CSRF_SECRET=<unique per environment>
+SINTER_CSRF_SECRET=<unique per environment>
 ```
 
 Precedence is `.env.local` over `.env`, and a real environment variable over both - so a deploy
 target's own configuration always wins. `PORT` is honored the same way and overrides `port` in
-`kiln.config.ts`, which is what `kiln dev --port` sets.
+`sinter.config.ts`, which is what `sinter dev --port` sets.
 
-Keep the secret in the environment rather than in `kiln.config.ts`, so it is never committed.
+Keep the secret in the environment rather than in `sinter.config.ts`, so it is never committed.
 Rotating it invalidates every form currently rendered.
 
 ## Security defaults
@@ -233,12 +233,12 @@ specifically so development runs under the same CSP as production.
 ## CLI
 
 ```
-kiln dev     Start the dev server with hot reload
-kiln build   Production build (server bundle + island chunks)
-kiln start   Run the production server bundle
+sinter dev     Start the dev server with hot reload
+sinter build   Production build (server bundle + island chunks)
+sinter start   Run the production server bundle
 ```
 
-`kiln build` emits one server bundle with every route and island statically imported, plus one
+`sinter build` emits one server bundle with every route and island statically imported, plus one
 content-hashed chunk per island and a shared runtime chunk.
 
 > **Note:** route modules are inlined into the server bundle, but path *matching* still uses
@@ -247,7 +247,7 @@ content-hashed chunk per island and a shared runtime chunk.
 
 ## The example is the documentation
 
-`example/` is Kiln's own documentation site, built with Kiln.
+`example/` is Sinter's own documentation site, built with Sinter.
 
 ```sh
 bun run example    # or: bun run docs

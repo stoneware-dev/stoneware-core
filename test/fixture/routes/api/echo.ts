@@ -1,4 +1,4 @@
-import type { ActionContext } from "kiln";
+import type { ActionContext } from "sinter";
 
 /** POST only, so GET must produce a 405 with an Allow header. */
 export async function POST({ request }: ActionContext): Promise<Response> {

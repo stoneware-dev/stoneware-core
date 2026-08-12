@@ -1,19 +1,19 @@
 /**
  * The install widget: pick a package runner, copy the command.
  *
- * It documents the one place Kiln is not Bun-only. Scaffolding runs on plain
- * Node so `npx create-kiln` works before Bun is installed; everything after
+ * It documents the one place Sinter is not Bun-only. Scaffolding runs on plain
+ * Node so `npx create-sinter` works before Bun is installed; everything after
  * that — dev server, build — needs Bun.
  */
 
-import { computed, signal } from "kiln/signals";
+import { computed, signal } from "sinter/signals";
 
 type Runner = "bunx" | "npx";
 
 const runner = signal<Runner>("bunx");
 const copied = signal(false);
 
-const command = computed(() => `${runner.value} create-kiln my-site`);
+const command = computed(() => `${runner.value} create-sinter my-site`);
 const copyLabel = computed(() => (copied.value ? "Copied" : "Copy"));
 
 const RUNNERS: Runner[] = ["bunx", "npx"];
@@ -59,8 +59,8 @@ export default function InstallCommand() {
       </div>
 
       <p class="install__note">
-        Both runners scaffold the project. Kiln itself runs on Bun: the generated app needs it for{" "}
-        <code>kiln dev</code> and <code>kiln build</code>.
+        Both runners scaffold the project. Sinter itself runs on Bun: the generated app needs it for{" "}
+        <code>sinter dev</code> and <code>sinter build</code>.
       </p>
     </div>
   );

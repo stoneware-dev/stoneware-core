@@ -6,7 +6,7 @@
  * never re-run and nothing is diffed.
  */
 
-import { signal } from "kiln/signals";
+import { signal } from "sinter/signals";
 
 const count = signal(0);
 

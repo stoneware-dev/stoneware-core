@@ -5,7 +5,7 @@
  * there is no check to write here and no way to forget one.
  */
 
-import type { ActionContext } from "kiln";
+import type { ActionContext } from "sinter";
 
 interface Note {
   page: string;

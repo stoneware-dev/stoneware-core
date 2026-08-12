@@ -6,7 +6,7 @@
  * the framework demands it.
  */
 
-import type { Child } from "kiln";
+import type { Child } from "sinter";
 import FiringGauge from "../islands/FiringGauge.tsx";
 
 export interface LayoutProps {
@@ -35,7 +35,7 @@ export function Layout({ title, description, section = "home", children }: Layou
 
         <header class="masthead">
           <a class="wordmark" href="/">
-            kiln
+            sinter
           </a>
           <nav>
             <a href="/" aria-current={section === "home" ? "page" : undefined}>
@@ -54,7 +54,7 @@ export function Layout({ title, description, section = "home", children }: Layou
 
         <footer class="shell colophon">
           <span>
-            Rendered on the server by kiln. This page runs under the framework's default
+            Rendered on the server by sinter. This page runs under the framework's default
             Content-Security-Policy, unmodified.
           </span>
           <span>

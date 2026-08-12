@@ -180,7 +180,7 @@ const PERCENT_SENTINEL = "￿";
  * straight to Bun is a remote denial of service: `GET /%41` is enough to take
  * the server down, and no try/catch can stop it.
  *
- * Kiln therefore decodes the path itself and hides any surviving "%" behind a
+ * Sinter therefore decodes the path itself and hides any surviving "%" behind a
  * sentinel for the duration of the match. See report.md.
  *
  * Returns null for malformed encoding, which the caller treats as a 404.

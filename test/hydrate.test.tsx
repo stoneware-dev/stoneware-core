@@ -172,9 +172,9 @@ describe("hydration", () => {
 
   test("replaces server markup and keeps the element interactive", () => {
     document.body.innerHTML =
-      `<button type="button" data-kiln-island="Counter" data-kiln-id="kiln-0">Clicked 3 times</button>` +
-      `<script type="application/json" id="kiln-islands">` +
-      `[{"name":"Counter","id":"kiln-0","props":{"start":3}}]</script>`;
+      `<button type="button" data-sinter-island="Counter" data-sinter-id="sinter-0">Clicked 3 times</button>` +
+      `<script type="application/json" id="sinter-islands">` +
+      `[{"name":"Counter","id":"sinter-0","props":{"start":3}}]</script>`;
 
     hydrate("Counter", Counter);
 
@@ -187,23 +187,23 @@ describe("hydration", () => {
 
   test("preserves the markers so the element stays addressable", () => {
     document.body.innerHTML =
-      `<button data-kiln-island="Counter" data-kiln-id="kiln-0">Clicked 0 times</button>` +
-      `<script type="application/json" id="kiln-islands">` +
-      `[{"name":"Counter","id":"kiln-0","props":{"start":0}}]</script>`;
+      `<button data-sinter-island="Counter" data-sinter-id="sinter-0">Clicked 0 times</button>` +
+      `<script type="application/json" id="sinter-islands">` +
+      `[{"name":"Counter","id":"sinter-0","props":{"start":0}}]</script>`;
 
     hydrate("Counter", Counter);
 
-    const button = document.querySelector('[data-kiln-id="kiln-0"]')!;
-    expect(button.getAttribute("data-kiln-island")).toBe("Counter");
+    const button = document.querySelector('[data-sinter-id="sinter-0"]')!;
+    expect(button.getAttribute("data-sinter-island")).toBe("Counter");
   });
 
   test("hydrates every instance of the same island", () => {
     document.body.innerHTML =
-      `<button data-kiln-island="Counter" data-kiln-id="kiln-0">Clicked 0 times</button>` +
-      `<button data-kiln-island="Counter" data-kiln-id="kiln-1">Clicked 10 times</button>` +
-      `<script type="application/json" id="kiln-islands">` +
-      `[{"name":"Counter","id":"kiln-0","props":{"start":0}},` +
-      `{"name":"Counter","id":"kiln-1","props":{"start":10}}]</script>`;
+      `<button data-sinter-island="Counter" data-sinter-id="sinter-0">Clicked 0 times</button>` +
+      `<button data-sinter-island="Counter" data-sinter-id="sinter-1">Clicked 10 times</button>` +
+      `<script type="application/json" id="sinter-islands">` +
+      `[{"name":"Counter","id":"sinter-0","props":{"start":0}},` +
+      `{"name":"Counter","id":"sinter-1","props":{"start":10}}]</script>`;
 
     hydrate("Counter", Counter);
 

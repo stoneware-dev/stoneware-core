@@ -28,7 +28,7 @@ export function getRenderContext(): RenderContext {
   const context = storage.getStore();
   if (context === undefined) {
     throw new Error(
-      "No active render context. Kiln helpers such as <Form> and csrfToken() may only " +
+      "No active render context. Sinter helpers such as <Form> and csrfToken() may only " +
         "be called while a route is rendering.",
     );
   }

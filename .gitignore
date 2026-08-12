@@ -1,10 +1,13 @@
 # Dependencies
 node_modules/
 
-# Build output. `kiln build` writes here; deleting it is always safe.
-.kiln/
+# Build output. `sinter build` writes here; deleting it is always safe.
+.sinter/
 # Scratch output from the payload-budget test, removed on success.
-.kiln-budget/
+.sinter-budget/
+
+# Package tarballs from `bun pm pack` / `npm pack`.
+*.tgz
 
 # Secrets. Bun loads .env files natively, so they never reach the repo.
 # .env.example is the tracked template and must stay tracked.
@@ -29,6 +32,16 @@ coverage/
 # OS cruft
 .DS_Store
 Thumbs.db
+
+# Local-only docs. Everything else under version control stays tracked.
+#
+# Do not replace these with a blanket `*.md` rule. That was tried, and because an
+# ignored file never appears in `git status`, new docs went missing with no
+# untracked marker to notice. Opt files out by name instead, so this list is the
+# one place to look when a document seems to have vanished.
+PUBLISHING.md
+notes/
+*.local.md
 
 # Note: bun.lock is deliberately NOT ignored. Commit it so installs are
 # reproducible.

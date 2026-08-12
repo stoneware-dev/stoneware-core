@@ -1,11 +1,11 @@
 /* ==========================================================================
-   Kiln documentation site — "celadon on stoneware"
+   Sinter documentation site — "celadon on stoneware"
    --------------------------------------------------------------------------
    Grey stoneware body, celadon glaze. Celadon is the jade-green glaze that
    comes out of a reduction firing, so the palette is the material the tool is
    named for.
 
-   Every rule lives in this file on purpose. The site runs under Kiln's default
+   Every rule lives in this file on purpose. The site runs under Sinter's default
    Content-Security-Policy (`style-src 'self'`, no unsafe-inline), which blocks
    inline <style> blocks and style="" attributes alike. Islands that need to
    drive a value at runtime write a custom property through the CSSOM instead,

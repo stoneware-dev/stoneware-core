@@ -17,7 +17,7 @@ import { buildIslands } from "../src/build.ts";
 import { discoverIslands } from "../src/islands.ts";
 
 const SITE_ROOT = join(import.meta.dir, "..", "example");
-const OUT_DIR = join(import.meta.dir, "..", ".kiln-budget");
+const OUT_DIR = join(import.meta.dir, "..", ".sinter-budget");
 
 /** Gzipped ceilings in bytes. Documented figures must stay under these. */
 const BUDGET = {

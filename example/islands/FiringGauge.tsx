@@ -10,7 +10,7 @@
  * the framework's default `style-src 'self'`.
  */
 
-import { computed, signal } from "kiln/signals";
+import { computed, signal } from "sinter/signals";
 
 /** 0 at the top of the document, 1 at the bottom. */
 const heat = signal(0);

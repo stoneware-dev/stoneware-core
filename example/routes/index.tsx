@@ -1,4 +1,4 @@
-import type { PageProps } from "kiln";
+import type { PageProps } from "sinter";
 import { Layout } from "../lib/Layout.tsx";
 import { CodeBlock } from "../lib/highlight.tsx";
 import { DOCS } from "../lib/docs.ts";
@@ -7,7 +7,7 @@ import LiveCounter from "../islands/LiveCounter.tsx";
 
 /**
  * Measured on this site's own production build (gzipped), not estimated.
- * Reproduce with: kiln build --root example, then gzip .kiln/static/*.js
+ * Reproduce with: sinter build --root example, then gzip .sinter/static/*.js
  */
 const STATS = [
   { label: "Client runtime", value: "3.2 KB" },
@@ -35,7 +35,7 @@ const PROBLEMS = [
   {
     problem: "Security is opt-in, and CSP is what everyone skips",
     answer:
-      "Kiln never emits inline executable script, so script-src 'self' just works. This site runs under the default policy, unmodified.",
+      "Sinter never emits inline executable script, so script-src 'self' just works. This site runs under the default policy, unmodified.",
   },
 ];
 
@@ -50,7 +50,7 @@ const PRINCIPLES = [
   },
   {
     title: "Signals, not an engine",
-    body: "Islands use Preact Signals directly. Kiln does not implement a reactive graph — that is a deliberate scope boundary, not an oversight.",
+    body: "Islands use Preact Signals directly. Sinter does not implement a reactive graph — that is a deliberate scope boundary, not an oversight.",
   },
   {
     title: "Interactivity by location",
@@ -67,7 +67,7 @@ const PRINCIPLES = [
 ];
 
 const ISLAND_EXAMPLE = `// islands/Counter.tsx — the only file here that ships JS
-import { signal } from "kiln/signals";
+import { signal } from "sinter/signals";
 
 const count = signal(0);
 
@@ -82,7 +82,7 @@ export default function Counter() {
 export default function Home(_props: PageProps) {
   return (
     <Layout
-      title="Kiln — shape your web application at build/server time"
+      title="Sinter — shape your web application at build/server time"
       description="A server-first, Bun-native web framework. Complete HTML by default, islands for interactivity, signals inside islands, security on before you configure anything."
       section="home"
     >
@@ -124,7 +124,7 @@ export default function Home(_props: PageProps) {
           <p class="eyebrow">The problem</p>
           <h2>The web ships JavaScript to sites that are documents</h2>
           <p>
-            Kiln inverts the default: HTML first, JavaScript only where you ask for it. Four specific
+            Sinter inverts the default: HTML first, JavaScript only where you ask for it. Four specific
             problems that follow from it.
           </p>
         </div>

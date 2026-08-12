@@ -1,4 +1,4 @@
-import { defineConfig } from "kiln";
+import { defineConfig } from "sinter";
 
 export default defineConfig({
   port: 3000,
@@ -6,9 +6,9 @@ export default defineConfig({
   // proof that the strict default is livable - if a page here needed an
   // exception, that would be a bug in the framework, not in the page.
   csrf: {
-    // Bun loads .env automatically, so KILN_CSRF_SECRET is picked up with no
+    // Bun loads .env automatically, so SINTER_CSRF_SECRET is picked up with no
     // dotenv dependency. The literal fallback exists only so the docs site runs
     // straight from a clone.
-    secret: Bun.env.KILN_CSRF_SECRET ?? "docs-site-only-secret-not-for-production",
+    secret: Bun.env.SINTER_CSRF_SECRET ?? "docs-site-only-secret-not-for-production",
   },
 });
