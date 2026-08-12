@@ -28,8 +28,13 @@ import config from "./stoneware.config.ts";
  */
 function preflight(): void {
   const cwd = process.cwd();
-  const required = ["routes"];
-  const missing = required.filter((dir) => !existsSync(resolve(cwd, dir)));
+
+  // routes/ is scanned per request. .stoneware/islands.json is the build
+  // manifest: without it createApp falls back to *rebuilding* the island
+  // bundles, which writes to disk — and a serverless filesystem is read-only
+  // outside /tmp, so that fails in a way that looks unrelated to the cause.
+  const required = ["routes", ".stoneware/islands.json"];
+  const missing = required.filter((path) => !existsSync(resolve(cwd, path)));
 
   if (missing.length === 0) return;
 
