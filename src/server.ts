@@ -23,6 +23,7 @@ import { buildIslandRegistry, discoverIslands, loadIslands } from "./islands.ts"
 import { renderToString } from "./render.ts";
 import { Router } from "./router.ts";
 import { isNotFound } from "./not-found.ts";
+import { listen } from "./listen.ts";
 import { requestURL } from "./url.ts";
 import type { IslandManifest } from "./build.ts";
 import type { StonewareConfig, ResolvedConfig } from "./config.ts";
@@ -606,7 +607,10 @@ export async function serve(
 ): Promise<ServeResult> {
   const app = await createApp(userConfig, options);
 
-  const server = Bun.serve({
+  const server = listen({
+    // No fallback here on purpose: a platform routes traffic to the port it
+    // assigned, so binding a different one yields a service that looks healthy
+    // in its own logs while every external request fails.
     port: app.config.port,
     hostname: app.config.hostname,
     fetch: (request) => app.fetch(request),

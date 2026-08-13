@@ -13,6 +13,7 @@ import { CLIENT_ASSET_PREFIX } from "../build.ts";
 import { loadConfigFile } from "../config.ts";
 import { directoryExists } from "../router.ts";
 import { createApp } from "../server.ts";
+import { listen } from "../listen.ts";
 import type { FSWatcher } from "node:fs";
 import type { ServerWebSocket } from "bun";
 
@@ -136,7 +137,10 @@ export async function dev(root: string): Promise<void> {
   // are the ones that need telling about it.
   const sockets = state.sockets;
 
-  const server = Bun.serve({
+  const server = listen({
+    // A busy port in development is nearly always a previous run that has not
+    // exited. Walking to the next one beats refusing to start.
+    allowPortFallback: true,
     port: app.config.port,
     hostname: app.config.hostname,
 
