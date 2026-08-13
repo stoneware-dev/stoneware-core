@@ -17,12 +17,14 @@ import {
 } from "./build.ts";
 import { SECURITY_HEADERS, resolveConfig } from "./config.ts";
 import { buildDocument } from "./document.ts";
+import { corsHeaders, preflightResponse } from "./cors.ts";
 import { verifyRequest } from "./csrf.ts";
 import { withRenderContext } from "./context.ts";
 import { buildIslandRegistry, discoverIslands, loadIslands } from "./islands.ts";
 import { renderToString } from "./render.ts";
 import { Router } from "./router.ts";
 import { isNotFound } from "./not-found.ts";
+import type { Locals } from "./middleware.ts";
 import { listen } from "./listen.ts";
 import { requestURL } from "./url.ts";
 import type { IslandManifest } from "./build.ts";
@@ -140,7 +142,7 @@ export async function createApp(
       // the security headers here. Routes cannot opt out by constructing their
       // own Response, and a new code path cannot forget to add them.
       try {
-        return withSecurityHeaders(await handleRequest(request), config);
+        return withCORS(withSecurityHeaders(await handleRequest(request), config), request, config);
       } catch (error) {
         // `notFound()` from anywhere the page render did not already catch it -
         // an action handler, or a helper called outside the render. It is a
@@ -173,22 +175,47 @@ export async function createApp(
     const asset = await serveStaticIfExists(request, config.publicDir, url.pathname, dev);
     if (asset) return asset;
 
+    // A preflight is answered before verification, and only ever before it: the
+    // browser sends OPTIONS with no body and no token by design, and refuses to
+    // send the real request until this succeeds. It changes nothing on the
+    // server, so there is nothing for CSRF to protect here.
+    if (config.cors) {
+      const preflight = preflightResponse(request, config.cors);
+      if (preflight) return preflight;
+    }
+
+    // Every mutating request is verified before anything else observes it -
+    // before middleware, before the route, before any handler. There is no
+    // per-route opt-in and nothing a project can put in front of it.
+    const csrf = await verifyRequest(request, config);
+    if (!csrf.ok) {
+      return errorResponse(403, csrf.reason ?? "Forbidden", config, undefined, request);
+    }
+
+    // Middleware runs after verification and before matching, so it also sees
+    // requests that are about to 404 - a redirect rule for a moved page is
+    // worth nothing if it only runs for paths that already resolve.
+    const locals = {} as Locals;
+    const middleware = await router.middleware();
+    if (middleware) {
+      const short = await middleware({ request, url, locals });
+      if (short instanceof Response) return short;
+    }
+
     const route = await router.match(url);
     if (!route) return renderErrorPage(404, "Not Found", request);
 
-    // Every mutating request is verified before a handler can observe it.
-    // There is no per-route opt-in and no way to reach a handler without this.
-    const csrf = await verifyRequest(request, config);
-    if (!csrf.ok) {
-      return errorResponse(403, csrf.reason ?? "Forbidden", config);
-    }
-
     return route.kind === "action"
-      ? handleAction(route, request, url)
-      : handlePage(route, request, url);
+      ? handleAction(route, request, url, locals)
+      : handlePage(route, request, url, locals);
   }
 
-  async function handleAction(route: ActionRoute, request: Request, url: URL): Promise<Response> {
+  async function handleAction(
+    route: ActionRoute,
+    request: Request,
+    url: URL,
+    locals: Locals,
+  ): Promise<Response> {
     const method = await resolveMethod(request);
     const handler = route.handlers[method] ?? (method === "HEAD" ? route.handlers.GET : undefined);
 
@@ -197,15 +224,20 @@ export async function createApp(
       return new Response("Method Not Allowed", { status: 405, headers: { Allow: allowed } });
     }
 
-    return await handler({ params: route.params, request, url });
+    return await handler({ params: route.params, request, url, locals });
   }
 
-  async function handlePage(route: PageRoute, request: Request, url: URL): Promise<Response> {
+  async function handlePage(
+    route: PageRoute,
+    request: Request,
+    url: URL,
+    locals: Locals,
+  ): Promise<Response> {
     if (request.method !== "GET" && request.method !== "HEAD") {
       return new Response("Method Not Allowed", { status: 405, headers: { Allow: "GET, HEAD" } });
     }
 
-    const props = { params: route.params, request, url };
+    const props = { params: route.params, request, url, locals };
 
     // The page function runs inside the render context too, not just the
     // renderer: a template may call `csrfToken()` while building its tree, and
@@ -286,6 +318,12 @@ export async function createApp(
   ): Promise<Response> {
     const name = status === 404 ? "_404" : "_500";
 
+    // A JSON client gets JSON, custom error page or not. Rendering the page
+    // would hand a fetch() a document to parse.
+    if (prefersJSON(request)) {
+      return errorResponse(status, message, config, dev ? error : undefined, request);
+    }
+
     try {
       const component = await router.errorPage(name);
       if (component) {
@@ -296,6 +334,7 @@ export async function createApp(
           params: {},
           request,
           url,
+          locals: {} as Locals,
           // Only in dev. An exception message routinely carries a file path or
           // a query, and this would hand it to whatever the page renders.
           error: dev ? error : undefined,
@@ -323,7 +362,7 @@ export async function createApp(
       console.error(`[stoneware] routes/${name} failed to render:`, pageError);
     }
 
-    return errorResponse(status, message, config, dev ? error : undefined);
+    return errorResponse(status, message, config, dev ? error : undefined, request);
   }
 
   return app;
@@ -551,12 +590,36 @@ function withSecurityHeaders(response: Response, config: ResolvedConfig): Respon
  * `<style>` block, and relaxing the policy to prettify an error page would mean
  * developing against a policy production does not use.
  */
+/**
+ * Attach the cross-origin headers, if the project enabled them.
+ *
+ * At the same single exit as the security headers, for the same reason: a route
+ * cannot forget them, and a new code path cannot skip them.
+ */
+function withCORS(response: Response, request: Request, config: ResolvedConfig): Response {
+  if (!config.cors) return response;
+
+  const headers = corsHeaders(request, config.cors);
+  if (headers === null) return response;
+
+  for (const [name, value] of headers) response.headers.append(name, value);
+  return response;
+}
+
 function errorResponse(
   status: number,
   message: string,
   _config: ResolvedConfig,
   error?: unknown,
+  request?: Request,
 ): Response {
+  // An API client asked for JSON and should not be handed a page of markup to
+  // parse. Without this a fetch() against a failing route resolves with
+  // `<!DOCTYPE html>` in the body and no usable error.
+  if (request !== undefined && prefersJSON(request)) {
+    return jsonError(status, message, error);
+  }
+
   const body =
     `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">` +
     `<title>${status}</title></head><body><h1>${status}</h1>` +
@@ -567,6 +630,43 @@ function errorResponse(
   return new Response(body, {
     status,
     headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
+  });
+}
+
+/**
+ * Does this client want JSON rather than a page?
+ *
+ * Read from `Accept` rather than from the path: a route under `routes/api/`
+ * that a browser navigates to should still render the error page, and a
+ * `fetch()` at any path should get JSON. The header is what actually states
+ * the caller's intent.
+ */
+function prefersJSON(request: Request): boolean {
+  const accept = request.headers.get("accept") ?? "";
+  if (accept.includes("application/json")) return true;
+
+  // A bare `fetch()` sends `*/*`, which says nothing. Treat it as JSON only
+  // when the request could not have come from a document navigation.
+  const mode = request.headers.get("sec-fetch-mode");
+  const dest = request.headers.get("sec-fetch-dest");
+  if (mode === "cors" || dest === "empty") return !accept.includes("text/html");
+
+  return false;
+}
+
+function jsonError(status: number, message: string, error?: unknown): Response {
+  const body: Record<string, unknown> = { error: message, status };
+
+  // Development only - the caller passes `undefined` in production, so no
+  // stack reaches a client.
+  if (error !== undefined) {
+    body.detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    if (error instanceof Error && error.stack) body.stack = error.stack;
+  }
+
+  return Response.json(body, {
+    status,
+    headers: { "Cache-Control": "no-store" },
   });
 }
 

@@ -12,6 +12,7 @@
 
 import { existsSync, statSync } from "node:fs";
 import { resolve } from "node:path";
+import type { Middleware, Locals } from "./middleware.ts";
 import type { Child, Component } from "./types.ts";
 
 /** `Bun.file().exists()` reports false for directories, so stat instead. */
@@ -28,6 +29,8 @@ export interface PageProps {
   params: Record<string, string>;
   request: Request;
   url: URL;
+  /** Anything `routes/_middleware.ts` put there for this request. */
+  locals: Locals;
 }
 
 /** Arguments handed to a server action. */
@@ -35,6 +38,8 @@ export interface ActionContext {
   params: Record<string, string>;
   request: Request;
   url: URL;
+  /** Anything `routes/_middleware.ts` put there for this request. */
+  locals: Locals;
 }
 
 export type ActionHandler = (context: ActionContext) => Response | Promise<Response>;
@@ -197,6 +202,20 @@ export class Router {
     return typeof module.default === "function"
       ? (module.default as Component<ErrorPageProps>)
       : null;
+  }
+
+  /**
+   * The project's `routes/_middleware.ts`, or null if it has none.
+   *
+   * Loaded through the ordinary route table like the error pages, so a
+   * production build inlines it and dev picks up edits without a restart.
+   */
+  async middleware(): Promise<Middleware | null> {
+    const filePath = this.#router?.routes["/_middleware"];
+    if (!filePath) return null;
+
+    const module = await this.#import(filePath);
+    return typeof module.default === "function" ? (module.default as Middleware) : null;
   }
 
   async #import(filePath: string): Promise<Record<string, unknown>> {

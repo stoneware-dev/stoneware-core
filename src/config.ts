@@ -69,6 +69,33 @@ export interface StonewareConfig {
    *                 http/https confusion, which is the common case
    */
   trustProxy?: boolean | "proto";
+
+  /**
+   * Cross-origin access for `routes/api/`.
+   *
+   * Off by default. Same-origin requests never needed it, and turning it on
+   * without meaning to is how an internal API becomes a public one.
+   */
+  cors?: CORSConfig;
+}
+
+export interface CORSConfig {
+  /**
+   * Origins allowed to call the API. A list, or `"*"` for any.
+   *
+   * `"*"` and `credentials: true` are incompatible - the browser rejects the
+   * combination - and `resolveConfig` refuses it rather than letting the
+   * failure surface as an opaque CORS error in someone's console.
+   */
+  origin: string | string[];
+  /** Defaults to the safe set plus the usual mutating verbs. */
+  methods?: string[];
+  /** Request headers a caller may send. Defaults to content-type and the CSRF header. */
+  headers?: string[];
+  /** Allow cookies and Authorization on cross-origin requests. Off by default. */
+  credentials?: boolean;
+  /** Seconds a browser may cache the preflight. Defaults to 600. */
+  maxAge?: number;
 }
 
 /** Fully-resolved configuration used internally. Every path is absolute. */
@@ -83,7 +110,16 @@ export interface ResolvedConfig {
   csp: string | false;
   csrf: Required<Omit<CSRFConfig, "secret">> & { secret: string };
   trustProxy: boolean | "proto";
+  cors: ResolvedCORS | null;
   dev: boolean;
+}
+
+export interface ResolvedCORS {
+  origin: string | string[];
+  methods: string[];
+  headers: string[];
+  credentials: boolean;
+  maxAge: number;
 }
 
 /**
@@ -171,7 +207,30 @@ export function resolveConfig(config: StonewareConfig = {}, dev = false): Resolv
     // which matters because whether a proxy is in front is a property of the
     // environment rather than of the project.
     trustProxy: config.trustProxy ?? parseTrustProxy(Bun.env.STONEWARE_TRUST_PROXY),
+    cors: resolveCORS(config.cors),
     dev,
+  };
+}
+
+function resolveCORS(cors: CORSConfig | undefined): ResolvedCORS | null {
+  if (cors === undefined) return null;
+
+  const credentials = cors.credentials ?? false;
+  if (cors.origin === "*" && credentials) {
+    // The browser rejects this pairing outright. Failing here names the problem
+    // instead of leaving it to appear as an unexplained CORS error at runtime.
+    throw new Error(
+      'cors.origin "*" cannot be combined with cors.credentials. ' +
+        "List the origins you actually allow.",
+    );
+  }
+
+  return {
+    origin: cors.origin,
+    methods: cors.methods ?? ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    headers: cors.headers ?? ["content-type", "x-csrf-token"],
+    credentials,
+    maxAge: cors.maxAge ?? 600,
   };
 }
 

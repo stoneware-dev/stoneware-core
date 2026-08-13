@@ -23,7 +23,13 @@ export { discoverIslands, loadIslands, buildIslandRegistry } from "./islands.ts"
 export { buildDocument } from "./document.ts";
 
 export type { Child, Component, Props, VNode, RawHTML } from "./types.ts";
-export type { StonewareConfig, ResolvedConfig, CSRFConfig } from "./config.ts";
+export type {
+  StonewareConfig,
+  ResolvedConfig,
+  CSRFConfig,
+  CORSConfig,
+} from "./config.ts";
+export type { Middleware, MiddlewareContext, Locals } from "./middleware.ts";
 export type {
   PageProps,
   ActionContext,
