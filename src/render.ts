@@ -10,6 +10,7 @@
  */
 
 import { Signal } from "@preact/signals-core";
+import { peekRenderContext } from "./context.ts";
 import { escapeHTML, safeJSONStringify } from "./escape.ts";
 import { Fragment, isRaw, isVNode } from "./types.ts";
 import type { Child, Component, Props, VNode } from "./types.ts";
@@ -364,6 +365,7 @@ function renderIsland(name: string, component: Component<any>, props: Props, ctx
   const { strategy, query, rest } = takeDirective(name, props);
 
   assertSerializableProps(name, rest);
+  warnAboutSecretsInProps(name, rest);
   ctx.collected.push({ name, id, props: rest, strategy, query });
 
   // Resolve through any wrapper components until an intrinsic element appears.
@@ -453,6 +455,94 @@ function takeDirective(
   }
 
   return { strategy, query, rest };
+}
+
+/**
+ * Key names that usually mean "this should not leave the server".
+ *
+ * Deliberately narrow. A prop called `token` is not on this list, because
+ * `csrfToken` is a documented Stoneware pattern and a warning that fires on
+ * correct code is a warning people learn to ignore.
+ */
+const SECRET_KEY = new RegExp(
+  [
+    "password",
+    "passwd",
+    "\bpwd\b",
+    "secret",
+    "private[_-]?key",
+    "api[_-]?key",
+    "access[_-]?token",
+    "refresh[_-]?token",
+    "bearer",
+    "credential",
+    "authorization",
+    "session[_-]?(id|token)",
+    "\bssn\b",
+    "social[_-]?security",
+    "credit[_-]?card",
+    "card[_-]?number",
+    "\bcvv\b",
+  ].join("|"),
+  "i",
+);
+
+/** Warned once per island and path, so a busy page does not repeat itself. */
+const warnedSecrets = new Set<string>();
+
+/**
+ * Warn when island props look like they carry a secret.
+ *
+ * Everything an island receives is serialized into the page and sent to the
+ * browser - that is what props are for. The failure is passing a whole record
+ * when the island needed two fields of it: `<Profile user={user} />` ships the
+ * password hash along with the name, and nothing about the page looks wrong.
+ *
+ * Nested, because that is where it actually happens. A top-level key called
+ * `user` is unremarkable; `user.passwordHash` is the problem.
+ *
+ * Development only, and a warning rather than an error: this is a heuristic on
+ * key names, and a heuristic must not be able to break a production render.
+ */
+function warnAboutSecretsInProps(island: string, props: Props): void {
+  if (peekRenderContext()?.config.dev !== true) return;
+
+  for (const path of findSecretPaths(props)) {
+    const key = `${island}.${path}`;
+    if (warnedSecrets.has(key)) continue;
+    warnedSecrets.add(key);
+
+    console.warn(
+      `[stoneware] Island "${island}" receives ${path}, which looks like a secret.
+` +
+        `  Island props are serialized into the HTML and sent to the browser.
+` +
+        `  Pass only the fields the island needs, not the whole record.`,
+    );
+  }
+}
+
+function findSecretPaths(value: unknown, prefix = "", depth = 0): string[] {
+  // Deep enough for a realistic props object, shallow enough that a cyclic or
+  // enormous structure cannot turn a dev render into a hang.
+  if (depth > 6 || value === null || typeof value !== "object") return [];
+
+  const found: string[] = [];
+
+  if (Array.isArray(value)) {
+    // One representative element: an array of 500 users would otherwise report
+    // the same leak 500 times.
+    if (value.length > 0) found.push(...findSecretPaths(value[0], `${prefix}[0]`, depth + 1));
+    return found;
+  }
+
+  for (const [key, nested] of Object.entries(value)) {
+    const path = prefix === "" ? key : `${prefix}.${key}`;
+    if (SECRET_KEY.test(key)) found.push(path);
+    else found.push(...findSecretPaths(nested, path, depth + 1));
+  }
+
+  return found;
 }
 
 /**
