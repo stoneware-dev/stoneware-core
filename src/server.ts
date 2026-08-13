@@ -450,6 +450,24 @@ async function resolveMethod(request: Request): Promise<HTTPMethod> {
  * Returns `null` for traversal attempts rather than throwing, so the caller
  * treats them as ordinary 404s and leaks nothing about the layout on disk.
  */
+/**
+ * Path segments a static request may never reach.
+ *
+ * Dotfiles are refused because nothing anyone deliberately publishes begins
+ * with a dot, while several things nobody wants published do: `.env`,
+ * `.git/config`, `.DS_Store`, editor backups. `public/` is documented as
+ * "served as-is", and this is the one exception - nginx, Apache, Vercel and
+ * Netlify all make it, for the same reason.
+ *
+ * `.well-known/` is the deliberate exception to the exception: ACME challenges,
+ * `security.txt` and app-association files all live there by specification.
+ */
+function isHiddenPath(decoded: string): boolean {
+  return decoded
+    .split("/")
+    .some((segment) => segment.startsWith(".") && segment !== "." && segment !== ".well-known");
+}
+
 function safeJoin(rootDir: string, relativePath: string): string | null {
   let decoded: string;
   try {
@@ -459,6 +477,7 @@ function safeJoin(rootDir: string, relativePath: string): string | null {
   }
 
   if (decoded.includes("\0")) return null;
+  if (isHiddenPath(decoded)) return null;
 
   const root = resolve(rootDir);
   const target = resolve(root, "." + (decoded.startsWith("/") ? decoded : `/${decoded}`));

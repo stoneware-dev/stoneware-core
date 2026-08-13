@@ -8,6 +8,19 @@
 
 import type { ResolvedConfig } from "./config.ts";
 
+/**
+ * Largest body this module will parse looking for a token.
+ *
+ * Extraction happens *before* verification, by necessity - the token is what
+ * verification needs. That makes it reachable by anyone, so an unbounded parse
+ * here is a free amplification: a few bytes of attacker request turning into
+ * megabytes of server-side multipart parsing.
+ *
+ * A token is a few hundred bytes. A body larger than this is not carrying one
+ * that we need to find by parsing, so it is refused with an explanation instead.
+ */
+const MAX_TOKEN_BODY_BYTES = 1024 * 1024;
+
 /** Methods that must not change server state, and so need no token. */
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
@@ -45,7 +58,8 @@ export async function verifyRequest(
       ok: false,
       reason:
         `Missing CSRF token. Submit forms with Stoneware's <Form> helper, or send the token ` +
-        `in the "${config.csrf.headerName}" header.`,
+        `in the "${config.csrf.headerName}" header. A body over 1 MB is not searched for a ` +
+        `token, so a large upload must send it in that header.`,
     };
   }
 
@@ -65,6 +79,12 @@ async function extractToken(
     contentType.includes("application/x-www-form-urlencoded") ||
     contentType.includes("multipart/form-data");
   if (!isForm) return null;
+
+  // Refuse to parse a large body just to look for a token. A client uploading
+  // one should send the token in the header, which is read above and costs
+  // nothing regardless of body size.
+  const length = Number(request.headers.get("content-length") ?? "0");
+  if (Number.isFinite(length) && length > MAX_TOKEN_BODY_BYTES) return null;
 
   try {
     const body = await request.clone().formData();

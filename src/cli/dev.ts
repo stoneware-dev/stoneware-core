@@ -112,6 +112,24 @@ function formatBuildMessage(item: unknown, root: string): string {
   return out;
 }
 
+/**
+ * Is this upgrade coming from a page the dev server itself served?
+ *
+ * A missing `Origin` is allowed: non-browser clients (a test, a CLI) omit it,
+ * and they are not the threat here - the attack needs a browser to carry it,
+ * and every browser sends the header on a WebSocket handshake.
+ */
+function isSameOrigin(request: Request, url: URL): boolean {
+  const origin = request.headers.get("origin");
+  if (origin === null) return true;
+
+  try {
+    return new URL(origin).host === url.host;
+  } catch {
+    return false;
+  }
+}
+
 export async function dev(root: string): Promise<void> {
   if (!process.env[HOT_SENTINEL]) reexecUnderHot();
 
@@ -148,6 +166,13 @@ export async function dev(root: string): Promise<void> {
       const url = new URL(request.url);
 
       if (url.pathname === LIVE_RELOAD_PATH) {
+        // WebSockets are exempt from the same-origin policy, so without this
+        // check any page you visit while the dev server runs can connect to it
+        // and read what it broadcasts - which now includes build errors
+        // carrying your file paths and source lines.
+        if (!isSameOrigin(request, url)) {
+          return new Response("Forbidden", { status: 403 });
+        }
         if (server.upgrade(request)) return undefined;
         return new Response("Expected a WebSocket upgrade", { status: 426 });
       }
