@@ -8,6 +8,7 @@
  */
 
 import { join, resolve, sep } from "node:path";
+import { realpathSync } from "node:fs";
 import {
   CLIENT_ASSET_PREFIX,
   ISLAND_MANIFEST_FILE,
@@ -172,11 +173,22 @@ export async function createApp(
 
     // Built client chunks.
     if (url.pathname.startsWith(`${CLIENT_ASSET_PREFIX}/`)) {
-      return serveStatic(staticDir, url.pathname.slice(CLIENT_ASSET_PREFIX.length + 1), dev);
+      return serveStatic(
+        staticDir,
+        url.pathname.slice(CLIENT_ASSET_PREFIX.length + 1),
+        dev,
+        config.followSymlinks,
+      );
     }
 
     // Anything in public/ is served as-is.
-    const asset = await serveStaticIfExists(request, config.publicDir, url.pathname, dev);
+    const asset = await serveStaticIfExists(
+      request,
+      config.publicDir,
+      url.pathname,
+      dev,
+      config.followSymlinks,
+    );
     if (asset) return asset;
 
     // A preflight is answered before verification, and only ever before it: the
@@ -468,7 +480,40 @@ function isHiddenPath(decoded: string): boolean {
     .some((segment) => segment.startsWith(".") && segment !== "." && segment !== ".well-known");
 }
 
-function safeJoin(rootDir: string, relativePath: string): string | null {
+/**
+ * Is the file this path opens still inside the root?
+ *
+ * `safeJoin` answers that lexically, which is not the same question. A symlink
+ * is resolved when the file is opened, so a link inside `public/` passes a
+ * textual check and then serves whatever it points at - verified against a
+ * junction that served the framework's own source.
+ *
+ * Resolved with `realpathSync` rather than by inspecting the link, because only
+ * the fully resolved path accounts for a link partway along the directory
+ * chain. A path that cannot be resolved does not exist, and the caller treats
+ * that the same as a miss.
+ */
+function resolvesInsideRoot(root: string, target: string): boolean {
+  let real: string;
+  let realRoot: string;
+  try {
+    real = realpathSync(target);
+    // The root may itself sit behind a link - a project under a symlinked home
+    // directory, say - so both sides have to be resolved or every path looks
+    // like an escape.
+    realRoot = realpathSync(root);
+  } catch {
+    return false;
+  }
+
+  return real === realRoot || real.startsWith(realRoot + sep);
+}
+
+function safeJoin(
+  rootDir: string,
+  relativePath: string,
+  followSymlinks = false,
+): string | null {
   let decoded: string;
   try {
     decoded = decodeURIComponent(relativePath);
@@ -483,11 +528,21 @@ function safeJoin(rootDir: string, relativePath: string): string | null {
   const target = resolve(root, "." + (decoded.startsWith("/") ? decoded : `/${decoded}`));
 
   if (target !== root && !target.startsWith(root + sep)) return null;
+
+  // The lexical check above is not enough on its own: it reasons about the
+  // path, and the filesystem reasons about the link.
+  if (!followSymlinks && !resolvesInsideRoot(root, target)) return null;
+
   return target;
 }
 
-async function serveStatic(rootDir: string, relativePath: string, dev: boolean): Promise<Response> {
-  const target = safeJoin(rootDir, relativePath);
+async function serveStatic(
+  rootDir: string,
+  relativePath: string,
+  dev: boolean,
+  followSymlinks: boolean,
+): Promise<Response> {
+  const target = safeJoin(rootDir, relativePath, followSymlinks);
   if (!target) return new Response("Not Found", { status: 404 });
 
   const file = Bun.file(target);
@@ -525,10 +580,11 @@ async function serveStaticIfExists(
   rootDir: string,
   pathname: string,
   dev: boolean,
+  followSymlinks: boolean,
 ): Promise<Response | null> {
   if (pathname === "/" || pathname.endsWith("/")) return null;
 
-  const target = safeJoin(rootDir, pathname);
+  const target = safeJoin(rootDir, pathname, followSymlinks);
   if (!target) return null;
 
   const file = Bun.file(target);

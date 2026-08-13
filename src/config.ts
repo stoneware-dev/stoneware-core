@@ -77,6 +77,21 @@ export interface StonewareConfig {
    * without meaning to is how an internal API becomes a public one.
    */
   cors?: CORSConfig;
+
+  /**
+   * Follow symbolic links out of `public/`.
+   *
+   * Off by default. A path is checked lexically before it is opened, but a
+   * symlink is resolved at open time, so the two can disagree: a link inside
+   * `public/` pointing anywhere on disk passes the check and then serves the
+   * target. Blocking is the safe answer and matches nginx's `disable_symlinks`.
+   *
+   * Turn it on for a deliberate layout - a monorepo linking
+   * `public/shared -> ../../assets` is the usual reason - and understand that a
+   * link written into `public/` by anything else then serves whatever it points
+   * at.
+   */
+  followSymlinks?: boolean;
 }
 
 export interface CORSConfig {
@@ -111,6 +126,7 @@ export interface ResolvedConfig {
   csrf: Required<Omit<CSRFConfig, "secret">> & { secret: string };
   trustProxy: boolean | "proto";
   cors: ResolvedCORS | null;
+  followSymlinks: boolean;
   dev: boolean;
 }
 
@@ -208,6 +224,7 @@ export function resolveConfig(config: StonewareConfig = {}, dev = false): Resolv
     // environment rather than of the project.
     trustProxy: config.trustProxy ?? parseTrustProxy(Bun.env.STONEWARE_TRUST_PROXY),
     cors: resolveCORS(config.cors),
+    followSymlinks: config.followSymlinks ?? false,
     dev,
   };
 }

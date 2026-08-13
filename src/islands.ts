@@ -35,10 +35,33 @@ export async function discoverIslands(islandsDir: string): Promise<IslandEntry[]
 
   for await (const match of glob.scan({ cwd: dir, onlyFiles: true, absolute: true })) {
     const name = toIslandName(dir, match);
+    assertUsableName(name, match);
     entries.push({ name, path: match, chunkName: name.replace(/\//g, "-") });
   }
 
   return entries.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Reject an island name the manifest cannot hold unambiguously.
+ *
+ * The island manifest carries one reserved key, `@runtime`, for the lazy
+ * hydration chunk. `islands/@runtime.tsx` is a perfectly legal filename, and it
+ * produces exactly that key - so one entry would stand for both the island and
+ * the runtime, and lazy hydration would quietly load the wrong file.
+ *
+ * Reserving the whole `@` prefix rather than the single name keeps room for
+ * another reserved key later without turning it into a breaking change.
+ */
+function assertUsableName(name: string, filePath: string): void {
+  if (!name.startsWith("@")) return;
+
+  throw new Error(
+    `Island name "${name}" (${filePath}) starts with "@", which is reserved.
+` +
+      `The build manifest uses "@"-prefixed keys for its own entries, so an island ` +
+      `named this way would collide with one. Rename the file.`,
+  );
 }
 
 function toIslandName(islandsDir: string, filePath: string): string {

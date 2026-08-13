@@ -7,7 +7,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createApp } from "../src/server.ts";
 import type { StonewareApp } from "../src/server.ts";
@@ -108,5 +108,64 @@ describe("the body read that happens before verification", () => {
     });
 
     expect(response.status).toBe(200);
+  });
+});
+
+describe("symbolic links out of public/", () => {
+  // Verified against a real junction that served the framework's own source:
+  // safeJoin checks the path textually, but a link is resolved when the file is
+  // opened, so the two disagreed.
+  const LINK = join(PUBLIC, "escape");
+
+  test("are not followed by default", async () => {
+    // Skipped where the platform will not let the test create a link at all.
+    let made = false;
+    try {
+      symlinkSync(join(import.meta.dir, "..", "src"), LINK, "junction");
+      made = true;
+    } catch {
+      return;
+    }
+
+    try {
+      const guarded = await createApp(
+        { root: FIXTURE_ROOT, csrf: { secret: "symlink-secret-0123456789ab" } },
+        { dev: true },
+      );
+      const response = await guarded.fetch(new Request("http://localhost/escape/csrf.ts"));
+      expect(response.status).toBe(404);
+
+      // And an ordinary asset beside it is unaffected.
+      expect((await guarded.fetch(new Request("http://localhost/styles.css"))).status).toBe(200);
+    } finally {
+      if (made) rmSync(LINK, { recursive: true, force: true });
+    }
+  });
+
+  test("are followed when a project opts in", async () => {
+    // A monorepo linking public/shared -> ../../assets is a real layout, so the
+    // block has an escape hatch rather than being absolute.
+    let made = false;
+    try {
+      symlinkSync(join(import.meta.dir, "..", "src"), LINK, "junction");
+      made = true;
+    } catch {
+      return;
+    }
+
+    try {
+      const permissive = await createApp(
+        {
+          root: FIXTURE_ROOT,
+          csrf: { secret: "symlink-secret-0123456789ab" },
+          followSymlinks: true,
+        },
+        { dev: true },
+      );
+      const response = await permissive.fetch(new Request("http://localhost/escape/csrf.ts"));
+      expect(response.status).toBe(200);
+    } finally {
+      if (made) rmSync(LINK, { recursive: true, force: true });
+    }
   });
 });
