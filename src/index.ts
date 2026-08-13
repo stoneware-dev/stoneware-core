@@ -10,6 +10,7 @@ export { raw, escapeHTML, safeJSONStringify } from "./escape.ts";
 export { renderToString } from "./render.ts";
 export { Form } from "./form.tsx";
 export { Image } from "./image.tsx";
+export { seo } from "./seo.tsx";
 export { createApp, serve } from "./server.ts";
 export { defineConfig, resolveConfig, loadConfigFile, DEFAULT_CSP } from "./config.ts";
 export { Router } from "./router.ts";
@@ -31,5 +32,14 @@ export type {
 } from "./router.ts";
 export type { StonewareApp, ServeResult } from "./server.ts";
 export type { ImageProps } from "./image.tsx";
+export type {
+  SEOOptions,
+  OpenGraphOptions,
+  ArticleOptions,
+  XCardOptions,
+  TwitterOptions,
+  RobotsOptions,
+  AlternateLink,
+} from "./seo.tsx";
 export type { IslandManifest } from "./build.ts";
 export type { RenderResult, CollectedIsland } from "./render.ts";

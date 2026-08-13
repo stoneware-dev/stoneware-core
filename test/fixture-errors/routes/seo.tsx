@@ -1,12 +1,20 @@
 import type { PageProps } from "../../../src/router.ts";
 import { Image } from "../../../src/image.tsx";
+import { seo } from "../../../src/seo.tsx";
 
 /** Contributes to <head> without the page owning the whole document. */
 export function head({ url }: PageProps) {
   return (
     <>
-      <title>Custom title</title>
-      <meta name="description" content="From the head export" />
+      {seo({
+        title: "Custom title",
+        description: "From the head export",
+        canonical: `https://example.com${url.pathname}`,
+        openGraph: { image: "/images/card.png", siteName: "Fixture" },
+        x: { site: "@stoneware" },
+        robots: { index: true, follow: true },
+        jsonLd: { "@context": "https://schema.org", "@type": "WebPage", name: "Custom title" },
+      })}
       <link rel="canonical" href={`https://example.com${url.pathname}`} />
     </>
   );
