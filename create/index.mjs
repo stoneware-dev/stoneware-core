@@ -59,6 +59,11 @@ const files = {
 
 export default defineConfig({
   port: 3000,
+  // Uncomment behind a proxy that terminates TLS (Render, Railway, Fly, nginx)
+  // so request URLs report https://. "proto" trusts only the scheme, which is
+  // safe anywhere; true also trusts the forwarded host, so use it only when
+  // something you control sets that header.
+  // trustProxy: "proto",
   // The framework's default Content-Security-Policy applies unless you replace
   // it here. The CSRF secret comes from STONEWARE_CSRF_SECRET in .env - keep it out
   // of this file so it is never committed.
@@ -104,6 +109,13 @@ export default defineConfig({
   ".env.example": () => `# Copy to .env and set a unique value per environment.
 # Signs CSRF tokens: rotating it invalidates every form currently rendered.
 STONEWARE_CSRF_SECRET=
+
+# Public origin, used for canonical URLs and the sitemap. No trailing slash.
+SITE_URL=
+
+# Set to 1 (or "proto") when something terminates TLS in front of the app, so
+# request URLs report https:// rather than the forwarded http://.
+STONEWARE_TRUST_PROXY=
 `,
 
   "routes/index.tsx": () => `import type { PageProps } from "stoneware";
@@ -201,7 +213,77 @@ button {
 }
 `,
 
-  "lib/.gitkeep": () => "",
+  // Where the site is published. Stated rather than derived from the request:
+  // any host that terminates TLS for you forwards a plain HTTP request, so a
+  // request-derived origin says http:// on a site served over https:// — and
+  // that ends up in canonical links and the sitemap.
+  "lib/site.ts": () => `/**
+ * The public origin of this site.
+ *
+ * Set SITE_URL in the environment for anything that is not local development.
+ * Absolute URLs — canonical links, og:image, the sitemap — are built from it.
+ */
+export const SITE_URL = Bun.env.SITE_URL ?? "http://localhost:3000";
+
+/** Absolute URL for a path on this site. */
+export function siteURL(path: string): string {
+  return SITE_URL + path;
+}
+`,
+
+  "routes/robots.txt.ts": () => `import type { ActionContext } from "stoneware";
+import { siteURL } from "../lib/site.ts";
+
+export function GET(_context: ActionContext): Response {
+  const body = \`User-agent: *
+Allow: /
+
+Sitemap: \${siteURL("/sitemap.xml")}
+\`;
+
+  return new Response(body, {
+    headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "public, no-cache" },
+  });
+}
+`,
+
+  "routes/sitemap.xml.ts": () => `import type { ActionContext } from "stoneware";
+import { siteURL } from "../lib/site.ts";
+
+/**
+ * Add every page you publish here. Generating this list from the same data the
+ * pages render is worth doing as soon as there is more than a handful — a
+ * sitemap maintained by hand is a sitemap that goes stale.
+ */
+const PATHS = ["/"];
+
+export function GET(_context: ActionContext): Response {
+  const urls = PATHS.map((path) => \`  <url><loc>\${escapeXML(siteURL(path))}</loc></url>\`);
+
+  const body = \`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+\${urls.join("\\n")}
+</urlset>
+\`;
+
+  return new Response(body, {
+    headers: {
+      "Content-Type": "application/xml; charset=utf-8",
+      "Cache-Control": "public, no-cache",
+    },
+  });
+}
+
+/** XML, not HTML: apostrophes are legal in a URL and must be escaped here. */
+function escapeXML(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+`,
 
   "README.md": (name) => `# ${name}
 
