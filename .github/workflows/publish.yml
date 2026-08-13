@@ -106,9 +106,23 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+      # Retried, because npm's read path is a CDN that lags the write path by a
+      # few seconds. A `npm view` fired immediately after `npm publish` returns
+      # E404 often enough that treating the first miss as failure reports a
+      # successful release as a broken one.
       - name: Verify both are live
         run: |
-          set -euo pipefail
+          set -uo pipefail
           for pkg in stoneware create-stoneware; do
-            npm view "$pkg@$VERSION" version
+            for attempt in 1 2 3 4 5 6; do
+              if npm view "$pkg@$VERSION" version 2>/dev/null; then
+                break
+              fi
+              if [ "$attempt" = 6 ]; then
+                echo "::error::$pkg@$VERSION did not appear on the registry"
+                exit 1
+              fi
+              echo "$pkg@$VERSION not visible yet; retrying in 10s ($attempt/6)"
+              sleep 10
+            done
           done
