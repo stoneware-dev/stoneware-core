@@ -194,3 +194,84 @@ describe("CORS", () => {
     ).toThrow(/cannot be combined with cors.credentials/);
   });
 });
+
+describe("middleware runs for every kind of route", () => {
+  test("dynamic routes", async () => {
+    const html = await (await get("/thing/42?as=ada")).text();
+
+    expect(html).toContain("thing 42");
+    expect(html).toContain("for ada");
+  });
+
+  test("a request that ends in a 404 still went through it", async () => {
+    // Middleware runs before matching, so it sees this one; the 404 is what
+    // happens afterwards.
+    const response = await get("/no-such-path");
+    expect(response.status).toBe(404);
+  });
+
+  test("static assets are served without reaching it", async () => {
+    // public/ is answered before the pipeline, so middleware never sees an
+    // image request - which is the point, not an oversight.
+    const response = await get("/blocked/../styles.css");
+    expect(response.status).not.toBe(403);
+  });
+});
+
+describe("locals are isolated between concurrent requests", () => {
+  test("one request never sees another's locals", async () => {
+    // The failure this guards against is the worst kind: user A served user B's
+    // identity, only under load, only sometimes.
+    const users = Array.from({ length: 40 }, (_, i) => `user-${i}`);
+
+    const bodies = await Promise.all(
+      users.map(async (user) => (await get(`/?as=${user}`)).text()),
+    );
+
+    bodies.forEach((body, i) => {
+      expect(body).toContain(`hello ${users[i]}`);
+    });
+  });
+
+  test("the same holds for API routes under concurrency", async () => {
+    const users = Array.from({ length: 40 }, (_, i) => `api-${i}`);
+
+    const payloads = await Promise.all(
+      users.map(async (user) => (await get(`/api/whoami?as=${user}`)).json()),
+    );
+
+    payloads.forEach((payload, i) => {
+      expect(payload).toEqual({ user: users[i] });
+    });
+  });
+});
+
+describe("CORS credentials", () => {
+  test("credentials: true emits the header", async () => {
+    const cors = await createApp(
+      {
+        root: FIXTURE_ROOT,
+        csrf: { secret: SECRET },
+        cors: { origin: ["https://caller.test"], credentials: true },
+      },
+      { dev: true },
+    );
+    const response = await cors.fetch(
+      new Request("http://localhost/", { headers: { origin: "https://caller.test" } }),
+    );
+
+    expect(response.headers.get("Access-Control-Allow-Credentials")).toBe("true");
+  });
+
+  test("without it the header is absent rather than false", async () => {
+    const cors = await createApp(
+      { root: FIXTURE_ROOT, csrf: { secret: SECRET }, cors: { origin: ["https://caller.test"] } },
+      { dev: true },
+    );
+    const response = await cors.fetch(
+      new Request("http://localhost/", { headers: { origin: "https://caller.test" } }),
+    );
+
+    expect(response.headers.get("Access-Control-Allow-Credentials")).toBeNull();
+  });
+});

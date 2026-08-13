@@ -242,7 +242,15 @@ export async function createApp(
     // The page function runs inside the render context too, not just the
     // renderer: a template may call `csrfToken()` while building its tree, and
     // may await data before returning it.
-    const context = { config, request, url, personalized: false, preloads: new Set<string>() };
+    const context = {
+      config,
+      request,
+      url,
+      personalized: false,
+      preloads: new Set<string>(),
+      renderingHead: false,
+      seoOutsideHead: false,
+    };
 
     let rendered;
     try {
@@ -253,7 +261,9 @@ export async function createApp(
         // `head` runs after the body, not before, so a preload contributed by an
         // <Image> deep in the page is already collected by the time the document
         // is assembled. It shares the render context either way.
+        context.renderingHead = true;
         const head = route.head ? renderToString(await route.head(props)).html : "";
+        context.renderingHead = false;
         return { body, head };
       });
     } catch (error) {
@@ -274,6 +284,8 @@ export async function createApp(
       head: rendered.head,
       preloads: [...context.preloads],
     });
+
+    warnIfSEOStranded(context.seoOutsideHead, rendered.body.html, route.name, dev);
 
     const headers = new Headers({ "Content-Type": "text/html; charset=utf-8" });
 
@@ -340,7 +352,15 @@ export async function createApp(
           error: dev ? error : undefined,
         };
 
-        const context = { config, request, url, personalized: false, preloads: new Set<string>() };
+        const context = {
+          config,
+          request,
+          url,
+          personalized: false,
+          preloads: new Set<string>(),
+          renderingHead: false,
+          seoOutsideHead: false,
+        };
         const rendered = await withRenderContext(context, async () => {
           const tree = await component(props);
           return renderToString(tree, { islands: islandRegistry });
@@ -641,6 +661,32 @@ function errorResponse(
  * `fetch()` at any path should get JSON. The header is what actually states
  * the caller's intent.
  */
+/**
+ * `seo()` in the page body, on a page that does not own its own document.
+ *
+ * Those tags end up in `<body>`, where nothing reads them. A page that returns
+ * a whole `<html>` is a different matter - it may legitimately call `seo()`
+ * inside its own `<head>` - so the check needs both facts, which is why it
+ * happens here rather than at the call site.
+ */
+function warnIfSEOStranded(
+  calledOutsideHead: boolean,
+  html: string,
+  route: string,
+  dev: boolean,
+): void {
+  if (!dev || !calledOutsideHead) return;
+  if (/^\s*(<!DOCTYPE[^>]*>\s*)?<html[\s>]/i.test(html)) return;
+
+  console.warn(
+    `[stoneware] seo() was called while rendering ${route}, not from its head export.
+` +
+      `  Those tags land in <body>, where nothing reads them. Move the call into:
+` +
+      `    export function head(props) { return seo({ ... }); }`,
+  );
+}
+
 function prefersJSON(request: Request): boolean {
   const accept = request.headers.get("accept") ?? "";
   if (accept.includes("application/json")) return true;

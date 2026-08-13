@@ -109,9 +109,38 @@ function renderChild(child: Child, ctx: Context): string {
 
   if (isVNode(child)) return renderVNode(child, ctx);
 
+  // A React element got here, which means JSX was compiled against React's
+  // runtime rather than Stoneware's. Naming that beats "cannot render value of
+  // type object", which sends people looking at their data.
+  if (isReactElement(child)) {
+    throw new TypeError(
+      `This JSX was compiled with React's runtime, not Stoneware's.\n` +
+        `Set the compiler options in tsconfig.json:\n\n` +
+        `  "jsx": "react-jsx",\n` +
+        `  "jsxImportSource": "stoneware"\n\n` +
+        `A project created with create-stoneware has these already; a file outside ` +
+        `the project's tsconfig, or an editor using a different one, is the usual cause.`,
+    );
+  }
+
   throw new TypeError(
     `Cannot render value of type ${typeof child}. ` +
       `Templates may return elements, strings, numbers, arrays, signals, or null.`,
+  );
+}
+
+/**
+ * Is this a React element rather than one of ours?
+ *
+ * React brands its elements with a `$$typeof` symbol. The name changed in React
+ * 19, so both are checked - a mismatch here would put the misleading error back.
+ */
+function isReactElement(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+
+  const brand = (value as { $$typeof?: unknown }).$$typeof;
+  return (
+    brand === Symbol.for("react.element") || brand === Symbol.for("react.transitional.element")
   );
 }
 

@@ -23,6 +23,8 @@ function atOrigin<T>(origin: string, fn: () => T): T {
       url: new URL(`${origin}/quiz/java`),
       personalized: false,
       preloads: new Set<string>(),
+      renderingHead: false,
+      seoOutsideHead: false,
     },
     fn,
   );

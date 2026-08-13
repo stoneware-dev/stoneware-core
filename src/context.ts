@@ -33,12 +33,28 @@ export interface RenderContext {
    * A Set because the same image used twice deserves one preload, not two.
    */
   preloads: Set<string>;
+  /** True while the route's `head` export is being rendered. */
+  renderingHead: boolean;
+  /** Set when `seo()` ran outside `head`. Checked once, after the render. */
+  seoOutsideHead: boolean;
 }
 
 /** Mark the current render as visitor-specific. Safe to call outside a render. */
 export function markPersonalized(): void {
   const context = storage.getStore();
   if (context !== undefined) context.personalized = true;
+}
+
+/**
+ * Record that `seo()` was called, and whether it was in the right place.
+ *
+ * Not an error on its own: a page that renders its own `<html>` may legitimately
+ * call `seo()` inside its own `<head>`. Only the caller knows whether the tags
+ * ended up somewhere they work, so the check happens after the render.
+ */
+export function noteSEOCall(): void {
+  const context = storage.getStore();
+  if (context !== undefined && !context.renderingHead) context.seoOutsideHead = true;
 }
 
 /**

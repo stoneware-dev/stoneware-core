@@ -25,6 +25,8 @@ function inRender<T>(fn: (preloads: Set<string>) => T): T {
       url: new URL("http://localhost/"),
       personalized: false,
       preloads,
+      renderingHead: false,
+      seoOutsideHead: false,
     },
     () => fn(preloads),
   );

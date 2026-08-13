@@ -18,7 +18,7 @@
  * these are ordinary vnodes rather than a string of markup.
  */
 
-import { peekRenderContext } from "./context.ts";
+import { noteSEOCall, peekRenderContext } from "./context.ts";
 import { raw, safeJSONStringify } from "./escape.ts";
 import { Fragment, h } from "./jsx-runtime.ts";
 import type { Child } from "./types.ts";
@@ -141,6 +141,10 @@ export interface SEOOptions {
 }
 
 export function seo(options: SEOOptions = {}): Child {
+  // Records where this was called from, so the server can warn if the tags
+  // landed in <body>, where they do nothing.
+  noteSEOCall();
+
   const { title, description, canonical, openGraph, robots, alternates } = options;
   const xCard = options.x ?? options.twitter;
 
