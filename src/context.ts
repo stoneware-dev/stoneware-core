@@ -23,12 +23,32 @@ export interface RenderContext {
    * protection entirely. The response layer reads this to decide.
    */
   personalized: boolean;
+  /**
+   * `<link rel="preload">` tags contributed from inside the body.
+   *
+   * A priority `<Image>` renders where the page puts it, but its preload only
+   * helps in `<head>`, which the document assembler has already passed by the
+   * time the body renders. Collecting here lets the tag travel backwards.
+   *
+   * A Set because the same image used twice deserves one preload, not two.
+   */
+  preloads: Set<string>;
 }
 
 /** Mark the current render as visitor-specific. Safe to call outside a render. */
 export function markPersonalized(): void {
   const context = storage.getStore();
   if (context !== undefined) context.personalized = true;
+}
+
+/**
+ * Ask for a `<link rel="preload">` in this page's head.
+ *
+ * A no-op outside a render, so `renderToString` still works standalone - in a
+ * test, or anywhere a fragment is rendered without a request.
+ */
+export function addPreload(tag: string): void {
+  storage.getStore()?.preloads.add(tag);
 }
 
 const storage = new AsyncLocalStorage<RenderContext>();

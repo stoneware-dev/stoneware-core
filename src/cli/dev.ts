@@ -8,7 +8,7 @@
 
 import { spawnSync } from "node:child_process";
 import { watch } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { CLIENT_ASSET_PREFIX } from "../build.ts";
 import { loadConfigFile } from "../config.ts";
 import { directoryExists } from "../router.ts";
@@ -61,6 +61,54 @@ function reexecUnderHot(): never {
     env: { ...process.env, [HOT_SENTINEL]: "1" },
   });
   process.exit(result.status ?? 0);
+}
+
+/**
+ * Turn a rebuild failure into something worth reading.
+ *
+ * `Bun.build` rejects with an `AggregateError` whose own message is the useless
+ * string "Bundle failed" - everything that identifies the problem is on the
+ * `BuildMessage`s inside it, including a `position` with the file, line, column
+ * and source text. Sending the top-level message alone would tell a developer
+ * only that something, somewhere, did not compile.
+ */
+function formatBuildFailure(error: unknown, root: string): string {
+  if (error instanceof AggregateError && Array.isArray(error.errors)) {
+    return error.errors.map((item) => formatBuildMessage(item, root)).join("\n\n");
+  }
+  if (error instanceof Error) return error.stack ?? error.message;
+  return String(error);
+}
+
+interface BuildPosition {
+  file?: string;
+  line?: number;
+  column?: number;
+  lineText?: string;
+}
+
+function formatBuildMessage(item: unknown, root: string): string {
+  // A `BuildMessage` is not an `instanceof Error`, so `String(it)` prefixes the
+  // class name onto the text - "BuildMessage: Expected ")"". Reading `.message`
+  // gets the sentence a compiler would have printed.
+  const named = item as { message?: unknown; position?: BuildPosition } | null;
+  const message = typeof named?.message === "string" ? named.message : String(item);
+  const position = named?.position;
+
+  if (!position?.file) return message;
+
+  // Relative to the project, because an absolute path is mostly noise and the
+  // useful part - which file of yours broke - is at the end of it.
+  const file = relative(root, position.file).replace(/\\/g, "/") || position.file;
+  const where = `${file}:${position.line ?? 0}:${position.column ?? 0}`;
+
+  let out = `${where}\n  ${message}`;
+  if (position.lineText) {
+    // A caret under the offending column, the way a compiler would.
+    const caret = " ".repeat(Math.max(0, position.column ?? 0));
+    out += `\n\n  ${position.lineText}\n  ${caret}^`;
+  }
+  return out;
 }
 
 export async function dev(root: string): Promise<void> {
@@ -134,6 +182,12 @@ export async function dev(root: string): Promise<void> {
         console.log(`[stoneware] rebuilt (${reason})`);
       } catch (error) {
         console.error("[stoneware] rebuild failed:", error);
+
+        // Also to the browser. A failed rebuild leaves the page showing stale
+        // output, and a terminal the developer may not be looking at is a poor
+        // place for the only notice of that.
+        const detail = formatBuildFailure(error, app.config.root);
+        for (const socket of sockets) socket.send(`error:${detail}`);
       }
     }, DEBOUNCE_MS);
   }

@@ -23,6 +23,10 @@ export interface DocumentOptions {
   suffix?: string;
   /** Hashed URL of the bundled co-located stylesheet, when the project has CSS. */
   stylesheet?: string | null;
+  /** Markup from the route's `head` export, already rendered to a string. */
+  head?: string;
+  /** `<link rel="preload">` tags collected during the body render. */
+  preloads?: string[];
 }
 
 const DOCTYPE = "<!DOCTYPE html>";
@@ -49,28 +53,40 @@ export function buildDocument(options: DocumentOptions): string {
     renderRuntimeScript(lazy.length > 0, manifest) +
     (options.suffix ?? "");
 
+  // Preloads first: they are the reason the browser can start a download
+  // early, so anything that delays them defeats the point.
+  const headExtra =
+    (options.preloads ?? []).join("") +
+    (options.head ?? "") +
+    (options.stylesheet ? styleLink(options.stylesheet) : "");
+
   if (isFullDocument(html)) {
     // A page that owns its whole document still gets the bundled stylesheet:
     // co-located CSS is collected by the build, so there is no <link> for the
     // author to write and none to forget.
-    const withStyles = options.stylesheet
-      ? injectBeforeHeadClose(html, styleLink(options.stylesheet))
-      : html;
-    return DOCTYPE + "\n" + injectBeforeBodyClose(withStyles, scripts);
+    const withHead = headExtra ? injectBeforeHeadClose(html, headExtra) : html;
+    return DOCTYPE + "\n" + injectBeforeBodyClose(withHead, scripts);
   }
 
   const lang = options.lang ?? "en";
-  const title = escapeTitle(options.title ?? "");
+
+  // A `head` export that supplies its own <title> replaces the default rather
+  // than joining it - two titles in one document is never what was meant.
+  const title = hasTitle(options.head) ? "" : `<title>${escapeTitle(options.title ?? "")}</title>`;
 
   return (
     `${DOCTYPE}\n<html lang="${lang}">` +
     `<head><meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width, initial-scale=1">` +
-    `<title>${title}</title>` +
-    (options.stylesheet ? styleLink(options.stylesheet) : "") +
+    title +
+    headExtra +
     `</head>` +
     `<body>${html}${scripts}</body></html>`
   );
+}
+
+function hasTitle(head: string | undefined): boolean {
+  return head !== undefined && /<title[\s>]/i.test(head);
 }
 
 function isFullDocument(html: string): boolean {

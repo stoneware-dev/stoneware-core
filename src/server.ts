@@ -198,19 +198,27 @@ export async function createApp(
     // The page function runs inside the render context too, not just the
     // renderer: a template may call `csrfToken()` while building its tree, and
     // may await data before returning it.
-    const context = { config, request, url, personalized: false };
+    const context = { config, request, url, personalized: false, preloads: new Set<string>() };
     const rendered = await withRenderContext(context, async () => {
       const tree = await route.component(props);
-      return renderToString(tree, { islands: islandRegistry });
+      const body = renderToString(tree, { islands: islandRegistry });
+
+      // `head` runs after the body, not before, so a preload contributed by an
+      // <Image> deep in the page is already collected by the time the document
+      // is assembled. It shares the render context either way.
+      const head = route.head ? renderToString(await route.head(props)).html : "";
+      return { body, head };
     });
 
     const html = buildDocument({
-      html: rendered.html,
-      islands: rendered.islands,
+      html: rendered.body.html,
+      islands: rendered.body.islands,
       manifest: islandManifest,
       title: route.name === "/" ? "Home" : route.name.replace(/^\//, ""),
       suffix: options.documentSuffix,
       stylesheet,
+      head: rendered.head,
+      preloads: [...context.preloads],
     });
 
     const headers = new Headers({ "Content-Type": "text/html; charset=utf-8" });
@@ -271,13 +279,14 @@ export async function createApp(
           error: dev ? error : undefined,
         };
 
-        const context = { config, request, url, personalized: false };
+        const context = { config, request, url, personalized: false, preloads: new Set<string>() };
         const rendered = await withRenderContext(context, async () => {
           const tree = await component(props);
           return renderToString(tree, { islands: islandRegistry });
         });
 
         const html = buildDocument({
+          preloads: [...context.preloads],
           html: rendered.html,
           islands: rendered.islands,
           manifest: islandManifest,
@@ -292,7 +301,7 @@ export async function createApp(
       console.error(`[stoneware] routes/${name} failed to render:`, pageError);
     }
 
-    return errorResponse(status, message, config);
+    return errorResponse(status, message, config, dev ? error : undefined);
   }
 
   return app;
@@ -509,16 +518,51 @@ function withSecurityHeaders(response: Response, config: ResolvedConfig): Respon
   }
 }
 
-function errorResponse(status: number, message: string, _config: ResolvedConfig): Response {
+/**
+ * The built-in error page, used when a project defines no `_404`/`_500`.
+ *
+ * In development it shows the thrown error and its stack. Without this the
+ * fallback said only "Internal Server Error", and the one piece of information
+ * the developer needed was in the terminal instead of in front of them.
+ *
+ * Unstyled on purpose: the default `style-src 'self'` forbids an inline
+ * `<style>` block, and relaxing the policy to prettify an error page would mean
+ * developing against a policy production does not use.
+ */
+function errorResponse(
+  status: number,
+  message: string,
+  _config: ResolvedConfig,
+  error?: unknown,
+): Response {
   const body =
     `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">` +
     `<title>${status}</title></head><body><h1>${status}</h1>` +
-    `<p>${Bun.escapeHTML(message)}</p></body></html>`;
+    `<p>${Bun.escapeHTML(message)}</p>` +
+    renderErrorDetail(error) +
+    `</body></html>`;
 
   return new Response(body, {
     status,
     headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
   });
+}
+
+/**
+ * Render a thrown value for the dev error page.
+ *
+ * Only ever called with an error in development - the caller passes `undefined`
+ * in production, so there is no path by which a stack reaches a visitor.
+ */
+function renderErrorDetail(error: unknown): string {
+  if (error === undefined) return "";
+
+  const detail =
+    error instanceof Error
+      ? `${error.name}: ${error.message}\n\n${error.stack ?? "(no stack)"}`
+      : String(error);
+
+  return `<h2>Error</h2><pre>${Bun.escapeHTML(detail)}</pre>`;
 }
 
 /* -------------------------------------------------------------------------- */

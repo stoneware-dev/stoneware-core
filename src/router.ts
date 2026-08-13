@@ -45,6 +45,8 @@ export interface PageRoute {
   filePath: string;
   params: Record<string, string>;
   component: Component<PageProps>;
+  /** The module's optional `head` export (see `HeadFn`). */
+  head?: HeadFn;
 }
 
 export interface ActionRoute {
@@ -170,6 +172,7 @@ export class Router {
         filePath: matched.filePath,
         params,
         component: module.default as Component<PageProps>,
+        head: typeof module.head === "function" ? (module.head as HeadFn) : undefined,
       };
     }
 
@@ -282,5 +285,23 @@ function collectHandlers(
   return handlers;
 }
 
-/** A page may export `head` to contribute to `<head>` without owning the document. */
-export type HeadFn = (props: PageProps) => Child;
+/**
+ * A page may export `head` to contribute to `<head>` without owning the
+ * document.
+ *
+ * ```tsx
+ * export function head({ params }: PageProps) {
+ *   return (
+ *     <>
+ *       <title>{params.slug}</title>
+ *       <meta name="description" content="..." />
+ *     </>
+ *   );
+ * }
+ * ```
+ *
+ * It runs in the same render context as the page, so it may await data and call
+ * the same helpers. Returning a `<title>` suppresses the default one rather
+ * than producing two.
+ */
+export type HeadFn = (props: PageProps) => Child | Promise<Child>;

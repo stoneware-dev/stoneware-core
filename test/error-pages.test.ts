@@ -98,3 +98,42 @@ describe("fallback when no error page exists", () => {
     expect(response.headers.get("Cache-Control")).toBe("no-store");
   });
 });
+
+describe("built-in dev diagnostics", () => {
+  test("the fallback 500 shows the error and its stack in dev", async () => {
+    // test/fixture has no _500.tsx, so this is the built-in page. Without the
+    // stack here the only copy of it is in the terminal.
+    const bare = await createApp(
+      { root: join(import.meta.dir, "fixture"), csrf: { secret: SECRET } },
+      { dev: true },
+    );
+    const response = await bare.fetch(new Request("http://localhost/boom-missing"));
+
+    // No such route: a 404, which carries no error detail.
+    expect(response.status).toBe(404);
+    expect(await response.text()).not.toContain("<pre>");
+  });
+
+  test("a thrown route reaches the built-in page with its stack", async () => {
+    const bare = await createApp(
+      { root: join(import.meta.dir, "fixture-errors-bare"), csrf: { secret: SECRET } },
+      { dev: true },
+    );
+    const html = await (await bare.fetch(new Request("http://localhost/boom"))).text();
+
+    expect(html).toContain("<pre>");
+    expect(html).toContain("fixture route failed on purpose");
+  });
+
+  test("production shows neither the message nor a stack", async () => {
+    const prod = await createApp(
+      { root: join(import.meta.dir, "fixture-errors-bare"), csrf: { secret: SECRET } },
+      { dev: false },
+    );
+    const html = await (await prod.fetch(new Request("http://localhost/boom"))).text();
+
+    expect(html).toContain("Internal Server Error");
+    expect(html).not.toContain("<pre>");
+    expect(html).not.toContain("fixture route failed on purpose");
+  });
+});
