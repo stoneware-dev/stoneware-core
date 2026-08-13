@@ -33,7 +33,7 @@ Full documentation lives on the Stoneware docs site, which is itself built with 
 **→ [Read the documentation](https://github.com/RANJEETJ06/stoneware-docs)**
 
 It covers routing, islands and signals, hydration directives (`client:visible`, `client:idle`,
-`client:media`), co-located CSS, head metadata, `seo()` and `<Image>`, server actions and CSRF, security
+`client:media`), co-located CSS, head metadata, `seo()` and `<Image>`, middleware, server actions and CSRF, security
 defaults, error pages, caching, the CLI, and deploying — including static export to hosts that
 cannot run Bun.
 
