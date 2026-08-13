@@ -9,15 +9,9 @@
  */
 
 import { Signal, effect } from "@preact/signals-core";
+import { ATTRIBUTE_ALIASES, EVENT_HANDLER, unsafeURLReason } from "../attributes.ts";
 import { Fragment, isRaw, isVNode } from "../types.ts";
 import type { Child, Props, VNode } from "../types.ts";
-
-const EVENT_HANDLER = /^on[A-Z]/;
-
-const ATTRIBUTE_ALIASES: Record<string, string> = {
-  className: "class",
-  htmlFor: "for",
-};
 
 /** Properties that must be assigned as DOM properties, not attributes. */
 const DOM_PROPERTIES = new Set(["value", "checked", "selected", "indeterminate"]);
@@ -197,7 +191,22 @@ function setAttribute(element: Element, name: string, value: unknown): void {
     return;
   }
 
-  element.setAttribute(attribute, String(value));
+  const serialized = String(value);
+
+  // The same check the server render performs. Declining is deliberate: this
+  // also runs on every signal update, and throwing there would destroy a live
+  // island over one bad value. A dead link beats a dead page.
+  const unsafe = unsafeURLReason(attribute, serialized);
+  if (unsafe !== null) {
+    console.error(
+      `[stoneware] Refused to set ${attribute}="${unsafe}..." — that scheme executes when ` +
+        `followed. Validate the value before binding it.`,
+    );
+    element.removeAttribute(attribute);
+    return;
+  }
+
+  element.setAttribute(attribute, serialized);
 }
 
 function applyStyle(element: HTMLElement, value: unknown): void {

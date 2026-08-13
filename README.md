@@ -94,7 +94,9 @@ Stoneware does not implement a reactive graph. That is a deliberate scope bounda
 does. There is no per-file directive to remember and no way to make a page interactive by accident.
 
 **5. Security is on by default.** Auto-escaping, automatic CSRF verification, and a restrictive CSP
-require no configuration to get the safe behavior. The unsafe path requires typing more.
+require no configuration to get the safe behavior. The unsafe path requires typing more - `raw()` and
+`dangerouslySetInnerHTML` are both named to be greppable. Server and client share one module deciding
+what an attribute may be, so a `javascript:` URL is refused on first paint *and* on every update.
 
 ## Project layout
 
