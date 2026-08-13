@@ -138,9 +138,13 @@ export async function createApp(
       await rebuildIslands();
     },
     async fetch(request: Request): Promise<Response> {
-      // Every response leaves through this one point, and every response gets
-      // the security headers here. Routes cannot opt out by constructing their
-      // own Response, and a new code path cannot forget to add them.
+      // Every response leaves through this one point, so a new code path cannot
+      // forget the security headers.
+      //
+      // A route that sets one of these headers itself keeps its own value -
+      // `withSecurityHeaders` fills gaps rather than overwriting, which is what
+      // makes a per-route CSP possible. That is a deliberate escape hatch, not
+      // an accident: forgetting a header is impossible, replacing one is not.
       try {
         return withCORS(withSecurityHeaders(await handleRequest(request), config), request, config);
       } catch (error) {

@@ -28,11 +28,38 @@ const VOID_ELEMENTS = new Set([
  */
 const RAW_TEXT_ELEMENTS = new Set(["script", "style"]);
 
-/** Attribute names are validated so a spread of untrusted keys cannot inject markup. */
+/**
+ * Attribute names are validated so a spread of untrusted keys cannot break out
+ * of the tag. It stops markup injection, not every dangerous attribute - an
+ * event handler is rejected by `EVENT_HANDLER` and a `javascript:` URL by
+ * `assertSafeURL`, both below, because a name check alone would let either
+ * through.
+ */
 const VALID_ATTRIBUTE_NAME = /^[a-zA-Z_:][\w.:-]*$/;
 
-/** `onClick` and friends - client-only, dropped during SSR. */
-const EVENT_HANDLER = /^on[A-Z]/;
+/**
+ * `onClick` and friends - client-only, dropped during SSR.
+ *
+ * Case-insensitive, and that matters. Matching only `on[A-Z]` caught the
+ * camelCase form an author writes by hand while letting the lowercase form
+ * through, so `<div {...untrusted} />` carrying `{ onclick: "alert(1)" }`
+ * rendered a live handler. The default CSP refuses inline handlers, but a
+ * project that sets `csp: false` would have had nothing left in front of it.
+ */
+const EVENT_HANDLER = /^on[a-z]/i;
+
+/**
+ * Attributes whose value the browser will fetch or navigate to.
+ *
+ * Escaping cannot make `javascript:` safe - the value is syntactically fine and
+ * still executes - so these are checked for scheme rather than just escaped.
+ */
+const URL_ATTRIBUTES = new Set([
+  "href", "src", "action", "formaction", "poster", "data", "ping", "cite", "xlink:href",
+]);
+
+/** The subset the browser *navigates* to, where a `data:` document also runs. */
+const NAVIGABLE_ATTRIBUTES = new Set(["href", "action", "formaction", "ping"]);
 
 const ATTRIBUTE_ALIASES: Record<string, string> = {
   className: "class",
@@ -257,10 +284,40 @@ function renderAttributes(props: Props, tag: string): string {
     }
 
     const serialized = attribute === "style" ? serializeStyle(value) : String(value);
+    if (URL_ATTRIBUTES.has(attribute)) assertSafeURL(attribute, serialized, tag);
     out += ` ${attribute}="${escapeHTML(serialized)}"`;
   }
 
   return out;
+}
+
+/**
+ * Refuse a URL whose scheme executes.
+ *
+ * Whitespace and control characters are stripped before the check because
+ * browsers ignore them inside a scheme: `java	script:` and ` JaVaScRiPt:` both
+ * run. HTML entities need no handling here - the value is escaped on the way
+ * out, so `&#106;avascript:` reaches the browser as literal text.
+ *
+ * `data:` is refused only where the browser would navigate to it. A
+ * `data:image/png;base64,...` in `<img src>` is ordinary and the default CSP
+ * already allows it.
+ */
+function assertSafeURL(attribute: string, value: string, tag: string): void {
+  const scheme = value.replace(/[ - ]/g, "").toLowerCase();
+
+  const executable = scheme.startsWith("javascript:") || scheme.startsWith("vbscript:");
+  const navigableData = NAVIGABLE_ATTRIBUTES.has(attribute) && scheme.startsWith("data:");
+
+  if (!executable && !navigableData) return;
+
+  throw new Error(
+    `<${tag} ${attribute}="..."> has a ${executable ? scheme.split(":")[0] : "data"}: URL, ` +
+      `which executes when followed. Escaping cannot make it safe.
+` +
+      `If this value comes from your data, validate the scheme before rendering it; ` +
+      `for a button that runs code, use an island with an onClick handler instead.`,
+  );
 }
 
 function serializeStyle(value: unknown): string {
