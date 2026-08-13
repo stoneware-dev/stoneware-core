@@ -100,3 +100,31 @@ describe("static export", () => {
     await rm(out, { recursive: true, force: true });
   });
 });
+
+describe("non-HTML routes", () => {
+  // Bug 3: export gave every GET route the `<path>/index.html` treatment, so a
+  // sitemap landed at /sitemap.xml/index.html and no crawler could find it.
+  const root = join(import.meta.dir, "fixture-export");
+  let out = "";
+
+  beforeAll(async () => {
+    out = join(tmpdir(), `stoneware-export-xml-${Date.now()}`);
+    await exportSite(root, out);
+  });
+
+  afterAll(async () => {
+    await rm(out, { recursive: true, force: true });
+  });
+
+  test("an XML route is written at its literal path", () => {
+    expect(existsSync(join(out, "feed.xml"))).toBe(true);
+  });
+
+  test("it is a file, not a directory holding an index.html", () => {
+    expect(existsSync(join(out, "feed.xml", "index.html"))).toBe(false);
+  });
+
+  test("the bytes are what the route served", async () => {
+    expect(await Bun.file(join(out, "feed.xml")).text()).toContain("<feed><title>fixture</title>");
+  });
+});

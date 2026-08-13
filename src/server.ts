@@ -22,6 +22,8 @@ import { withRenderContext } from "./context.ts";
 import { buildIslandRegistry, discoverIslands, loadIslands } from "./islands.ts";
 import { renderToString } from "./render.ts";
 import { Router } from "./router.ts";
+import { isNotFound } from "./not-found.ts";
+import { requestURL } from "./url.ts";
 import type { IslandManifest } from "./build.ts";
 import type { StonewareConfig, ResolvedConfig } from "./config.ts";
 import type { ActionRoute, HTTPMethod, PageRoute } from "./router.ts";
@@ -139,6 +141,13 @@ export async function createApp(
       try {
         return withSecurityHeaders(await handleRequest(request), config);
       } catch (error) {
+        // `notFound()` from anywhere the page render did not already catch it -
+        // an action handler, or a helper called outside the render. It is a
+        // deliberate answer, not a failure, so it is not logged as one.
+        if (isNotFound(error)) {
+          return withSecurityHeaders(await renderErrorPage(404, error.message, request), config);
+        }
+
         console.error("[stoneware] Unhandled error while serving request:", error);
         // renderErrorPage never throws, so this catch cannot be re-entered.
         return withSecurityHeaders(
@@ -150,7 +159,9 @@ export async function createApp(
   };
 
   async function handleRequest(request: Request): Promise<Response> {
-    const url = new URL(request.url);
+    // The public URL, not the internal one. Behind a TLS-terminating proxy the
+    // two differ in scheme, and every absolute URL a page builds comes from here.
+    const url = requestURL(request, config.trustProxy);
 
     // Built client chunks.
     if (url.pathname.startsWith(`${CLIENT_ASSET_PREFIX}/`)) {
@@ -199,16 +210,26 @@ export async function createApp(
     // renderer: a template may call `csrfToken()` while building its tree, and
     // may await data before returning it.
     const context = { config, request, url, personalized: false, preloads: new Set<string>() };
-    const rendered = await withRenderContext(context, async () => {
-      const tree = await route.component(props);
-      const body = renderToString(tree, { islands: islandRegistry });
 
-      // `head` runs after the body, not before, so a preload contributed by an
-      // <Image> deep in the page is already collected by the time the document
-      // is assembled. It shares the render context either way.
-      const head = route.head ? renderToString(await route.head(props)).html : "";
-      return { body, head };
-    });
+    let rendered;
+    try {
+      rendered = await withRenderContext(context, async () => {
+        const tree = await route.component(props);
+        const body = renderToString(tree, { islands: islandRegistry });
+
+        // `head` runs after the body, not before, so a preload contributed by an
+        // <Image> deep in the page is already collected by the time the document
+        // is assembled. It shares the render context either way.
+        const head = route.head ? renderToString(await route.head(props)).html : "";
+        return { body, head };
+      });
+    } catch (error) {
+      // A route that matched but found no content. Answering 404 here rather
+      // than rendering "no such page" with a 200 is the whole point: a soft 404
+      // gets indexed, and tells a client the request succeeded.
+      if (isNotFound(error)) return renderErrorPage(404, error.message, request);
+      throw error;
+    }
 
     const html = buildDocument({
       html: rendered.body.html,
@@ -267,7 +288,7 @@ export async function createApp(
     try {
       const component = await router.errorPage(name);
       if (component) {
-        const url = new URL(request.url);
+        const url = requestURL(request, config.trustProxy);
         const props = {
           status,
           message,

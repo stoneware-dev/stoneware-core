@@ -50,6 +50,25 @@ export interface StonewareConfig {
   csp?: string | false;
 
   csrf?: CSRFConfig;
+
+  /**
+   * Trust `X-Forwarded-*` headers when reconstructing the request URL.
+   *
+   * Every platform that terminates TLS for you - Render, Railway, Fly, Heroku,
+   * Vercel, nginx - forwards a plain HTTP request. Without this the app sees
+   * `http://` on a site served over `https://`, so canonical URLs, `og:image`
+   * and any absolute link it builds point at the insecure origin.
+   *
+   * Off by default, and deliberately: these headers are trivially forged by
+   * anyone who can reach the app directly. Trusting a forged `X-Forwarded-Host`
+   * is how absolute URLs get poisoned. Turn it on only when something you
+   * control sits in front.
+   *
+   *   `true`        trust the scheme and the host
+   *   `"proto"`     trust only the scheme - safe on any host, and enough to fix
+   *                 http/https confusion, which is the common case
+   */
+  trustProxy?: boolean | "proto";
 }
 
 /** Fully-resolved configuration used internally. Every path is absolute. */
@@ -63,6 +82,7 @@ export interface ResolvedConfig {
   outDir: string;
   csp: string | false;
   csrf: Required<Omit<CSRFConfig, "secret">> & { secret: string };
+  trustProxy: boolean | "proto";
   dev: boolean;
 }
 
@@ -147,8 +167,18 @@ export function resolveConfig(config: StonewareConfig = {}, dev = false): Resolv
       fieldName: config.csrf?.fieldName ?? "_csrf",
       headerName: config.csrf?.headerName ?? "x-csrf-token",
     },
+    // STONEWARE_TRUST_PROXY lets a deploy turn this on without a code change,
+    // which matters because whether a proxy is in front is a property of the
+    // environment rather than of the project.
+    trustProxy: config.trustProxy ?? parseTrustProxy(Bun.env.STONEWARE_TRUST_PROXY),
     dev,
   };
+}
+
+function parseTrustProxy(value: string | undefined): boolean | "proto" {
+  if (value === undefined) return false;
+  if (value === "proto") return "proto";
+  return value === "1" || value.toLowerCase() === "true";
 }
 
 /** Load `stoneware.config.ts` from a project root, if one exists. */

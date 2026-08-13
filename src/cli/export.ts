@@ -76,6 +76,16 @@ export async function exportSite(root: string, outDirName = "dist"): Promise<Exp
         throw new Error(`${url} returned ${response.status} during export`);
       }
 
+      // Not every GET route is a page. A sitemap, a robots.txt or a JSON feed
+      // must land at its literal path - written as `<path>/index.html` it is
+      // unreachable at the URL a crawler will ask for.
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!contentType.includes("text/html")) {
+        await writeFileAt(outDir, url, await response.bytes());
+        pages++;
+        continue;
+      }
+
       const html = await response.text();
 
       // A prerendered page cannot carry a CSRF token: the token would be frozen
@@ -140,6 +150,18 @@ async function expand(
     }
     return url;
   });
+}
+
+/**
+ * Write a non-HTML response at its literal path, extension intact.
+ *
+ * `/sitemap.xml` has to be readable at `/sitemap.xml`; giving it the directory
+ * treatment below would put it at `/sitemap.xml/` and no crawler would find it.
+ */
+async function writeFileAt(outDir: string, url: string, bytes: Uint8Array): Promise<void> {
+  const target = join(outDir, url.replace(/^\//, ""));
+  await mkdir(dirname(target), { recursive: true });
+  await Bun.write(target, bytes);
 }
 
 /**

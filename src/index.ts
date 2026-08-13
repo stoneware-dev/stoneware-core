@@ -11,6 +11,8 @@ export { renderToString } from "./render.ts";
 export { Form } from "./form.tsx";
 export { Image } from "./image.tsx";
 export { seo } from "./seo.tsx";
+export { notFound, isNotFound } from "./not-found.ts";
+export { requestURL } from "./url.ts";
 export { createApp, serve } from "./server.ts";
 export { defineConfig, resolveConfig, loadConfigFile, DEFAULT_CSP } from "./config.ts";
 export { Router } from "./router.ts";
