@@ -268,6 +268,7 @@ function renderAttributes(props: Props, tag: string): string {
       continue;
     }
 
+    if (attribute === "style") warnAboutInlineStyle(tag);
     const serialized = attribute === "style" ? serializeStyle(value) : String(value);
     const unsafe = unsafeURLReason(attribute, serialized);
     if (unsafe !== null) {
@@ -484,6 +485,52 @@ function warnAboutSecretsInProps(island: string, props: Props): void {
         `  Pass only the fields the island needs, not the whole record.`,
     );
   }
+}
+
+const warnedInlineStyle = new Set<string>();
+
+/**
+ * A `style` attribute under a policy that will not run it.
+ *
+ * The default CSP is `style-src 'self'` with no `unsafe-inline`, and that
+ * governs style *attributes*, not just `<style>` blocks. So the renderer emits
+ * `style="..."` perfectly well and the browser refuses to apply it: the element
+ * is there, the declaration is in the HTML, and nothing happens. No error, no
+ * network failure - only a console entry most people never open.
+ *
+ * Warned rather than thrown, and only in development, for two reasons. The
+ * policy is configurable, so a project that has widened it is doing nothing
+ * wrong; and a heuristic about CSP must never be able to break a production
+ * render. Once per tag, because a list of fifty rows would otherwise report the
+ * same mistake fifty times.
+ */
+function warnAboutInlineStyle(tag: string): void {
+  const config = peekRenderContext()?.config;
+  if (config?.dev !== true) return;
+
+  // `csp: false` removes the header entirely, and a policy the project wrote
+  // itself may well permit inline styles. Only the case that actually breaks is
+  // worth interrupting for.
+  const csp = config.csp;
+  if (csp === false) return;
+  if (!/style-src/.test(csp) || /style-src[^;]*'unsafe-inline'/.test(csp)) return;
+
+  if (warnedInlineStyle.has(tag)) return;
+  warnedInlineStyle.add(tag);
+
+  console.warn(
+    `[stoneware] <${tag} style="..."> will be ignored by the browser.
+` +
+      `  The Content-Security-Policy sets style-src without 'unsafe-inline', which
+` +
+      `  blocks style attributes as well as <style> blocks. The markup renders, the
+` +
+      `  declaration is in the HTML, and it simply never applies.
+` +
+      `  Use a class and a .css file beside the component - the build collects it.
+` +
+      `  To allow inline styles instead, set csp in stoneware.config.ts.`,
+  );
 }
 
 function findSecretPaths(value: unknown, prefix = "", depth = 0): string[] {
