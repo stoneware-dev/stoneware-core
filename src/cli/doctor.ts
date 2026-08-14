@@ -14,7 +14,7 @@
  */
 
 import { existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { loadConfigFile, resolveConfig } from "../config.ts";
 
 export type Severity = "ok" | "warn" | "error";
