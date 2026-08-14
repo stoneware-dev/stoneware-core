@@ -155,7 +155,7 @@ export async function dev(root: string): Promise<void> {
   // are the ones that need telling about it.
   const sockets = state.sockets;
 
-  const server = listen({
+  const server = await listen({
     // A busy port in development is nearly always a previous run that has not
     // exited. Walking to the next one beats refusing to start.
     allowPortFallback: true,

@@ -854,7 +854,7 @@ export async function serve(
 ): Promise<ServeResult> {
   const app = await createApp(userConfig, options);
 
-  const server = listen({
+  const server = await listen({
     // No fallback here on purpose: a platform routes traffic to the port it
     // assigned, so binding a different one yields a service that looks healthy
     // in its own logs while every external request fails.

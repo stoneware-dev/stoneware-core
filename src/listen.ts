@@ -18,6 +18,68 @@ import type { WebSocketHandler } from "bun";
 /** How many ports to try before giving up, starting from the requested one. */
 const MAX_ATTEMPTS = 10;
 
+/**
+ * Loopback addresses to ask before binding.
+ *
+ * Both, not one. "localhost" resolves to ::1 first on Windows and to 127.0.0.1
+ * on most Linux setups, so probing a single family finds a neighbour on that
+ * family only - which is exactly the case that went unnoticed.
+ */
+const PROBE_ADDRESSES = ["127.0.0.1", "::1"];
+
+/** Loopback refuses instantly; this only guards a probe that hangs instead. */
+const PROBE_TIMEOUT_MS = 250;
+
+/**
+ * Is something already answering on this port?
+ *
+ * A successful bind does not mean the port was free. A loopback bind and an
+ * all-interfaces bind are different sockets, so two servers can each hold :3000
+ * without either seeing an error - and requests then go to whichever one the
+ * client's IPv4/IPv6 preference happens to pick. That is worse than a clean
+ * failure, because both processes report success.
+ *
+ * Asking whether anything *answers* catches it. Asking whether bind failed
+ * cannot: nothing failed.
+ */
+async function isPortAnswering(port: number): Promise<boolean> {
+  for (const hostname of PROBE_ADDRESSES) {
+    if (await canConnect(hostname, port)) return true;
+  }
+  return false;
+}
+
+async function canConnect(hostname: string, port: number): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const timeout = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => resolve(false), PROBE_TIMEOUT_MS);
+  });
+
+  const attempt = (async () => {
+    try {
+      const socket = await Bun.connect({
+        hostname,
+        port,
+        // Required by the API, and there is nothing to do with the connection:
+        // that it opened at all is the whole answer.
+        socket: { data() {}, error() {}, close() {} },
+      });
+      socket.end();
+      return true;
+    } catch {
+      // Refused, unreachable, or no such address family - all mean "free".
+      return false;
+    }
+  })();
+
+  try {
+    return await Promise.race([attempt, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export interface ListenOptions<T = undefined> {
   port: number;
   hostname: string;
@@ -35,12 +97,21 @@ export interface ListenOptions<T = undefined> {
   allowPortFallback?: boolean;
 }
 
-export function listen<T = undefined>(options: ListenOptions<T>): Bun.Server<T> {
+export async function listen<T = undefined>(options: ListenOptions<T>): Promise<Bun.Server<T>> {
   const { allowPortFallback = false, ...serveOptions } = options;
   const attempts = allowPortFallback ? MAX_ATTEMPTS : 1;
+  const last = options.port + attempts - 1;
 
   for (let offset = 0; offset < attempts; offset++) {
     const port = options.port + offset;
+
+    // Only in development, and only as a reason to move. Production never
+    // probes: it must bind the port it was given or fail saying so, and a probe
+    // there could only turn a clear error into a quieter one.
+    if (allowPortFallback && (await isPortAnswering(port))) {
+      console.warn(`[stoneware] something is already serving on port ${port}, trying ${port + 1}`);
+      continue;
+    }
 
     try {
       // `as never` because Bun.serve's overloads split on the presence of
@@ -52,8 +123,12 @@ export function listen<T = undefined>(options: ListenOptions<T>): Bun.Server<T> 
     }
   }
 
-  // Unreachable: the loop either returns or throws on its final attempt.
-  throw new Error("Unable to start a server");
+  // Reached when every candidate was already answering, so no bind was ever
+  // attempted and there is no underlying error to surface.
+  throw new Error(
+    `No free port between ${options.port} and ${last}: something is already ` +
+      `serving on each of them. Pass --port to pick another.`,
+  );
 }
 
 /**
