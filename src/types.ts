@@ -26,8 +26,34 @@ export type Props = Record<string, unknown> & { children?: Child };
 /**
  * Templates are plain functions: props in, markup out. No classes, no hooks,
  * no lifecycle - see CLAUDE.md §2.2.
+ *
+ * Synchronous, and that is load-bearing rather than incidental: rendering walks
+ * the tree to a string in one pass with no await anywhere, so a component nested
+ * inside JSX has no point at which a promise could be resolved. Islands are
+ * bound by the same rule from the other side - they run in the browser too.
  */
 export type Component<P = Props> = (props: P) => Child;
+
+/**
+ * A component the framework calls directly rather than finding inside a tree:
+ * the default export of a route, and of `_404` / `_500`.
+ *
+ * These may be async. The server awaits the call before rendering begins, which
+ * is the one place a promise can be resolved without a second rendering pass, so
+ * it is the one place the type allows it:
+ *
+ * ```tsx
+ * export default async function Post({ params }: PageProps) {
+ *   const row = db.query("select * from posts where slug = ?").get(params.slug);
+ *   if (!row) notFound();
+ *   return <article>{row.title}</article>;
+ * }
+ * ```
+ *
+ * Anything deeper has to have finished its work before it returns markup - fetch
+ * in the route, pass the result down as props.
+ */
+export type PageComponent<P = Props> = (props: P) => Child | Promise<Child>;
 
 export type ElementType = string | Component<any> | typeof Fragment;
 

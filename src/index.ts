@@ -22,7 +22,7 @@ export { buildIslands, CLIENT_ASSET_PREFIX } from "./build.ts";
 export { discoverIslands, loadIslands, buildIslandRegistry } from "./islands.ts";
 export { buildDocument } from "./document.ts";
 
-export type { Child, Component, Props, VNode, RawHTML } from "./types.ts";
+export type { Child, Component, PageComponent, Props, VNode, RawHTML } from "./types.ts";
 export type {
   StonewareConfig,
   ResolvedConfig,

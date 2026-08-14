@@ -106,6 +106,21 @@ function renderChild(child: Child, ctx: Context): string {
 
   if (isVNode(child)) return renderVNode(child, ctx);
 
+  // An async component nested inside JSX. Rendering is a single synchronous
+  // walk to a string, so there is no point at which this could be awaited -
+  // only the route's own default export gets that, because the server awaits it
+  // before rendering starts. Naming the rule beats "cannot render value of type
+  // object", which sends people looking at their data.
+  if (typeof (child as { then?: unknown }).then === "function") {
+    throw new TypeError(
+      `A component returned a promise while rendering.\n` +
+        `Only a route's default export may be async - the server awaits that one ` +
+        `call before rendering begins. A component nested inside JSX cannot be, ` +
+        `because rendering never awaits.\n\n` +
+        `Fetch in the route and pass the result down as props.`,
+    );
+  }
+
   // A React element got here, which means JSX was compiled against React's
   // runtime rather than Stoneware's. Naming that beats "cannot render value of
   // type object", which sends people looking at their data.

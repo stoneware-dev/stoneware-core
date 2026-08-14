@@ -1,9 +1,10 @@
 /**
  * File-based routing.
  *
- * Path-to-route resolution is delegated to `Bun.FileSystemRouter` rather than
- * reimplemented - it already implements exactly the Next.js-style conventions
- * §7 calls for, including `[slug]` and `[...rest]` (CLAUDE.md §2.6).
+ * Deriving patterns from filenames is delegated to `Bun.FileSystemRouter`: it
+ * already implements exactly the Next.js-style conventions §7 calls for,
+ * including `[slug]` and `[...rest]` (CLAUDE.md §2.6). Matching a request
+ * against those patterns does not go through it - see route-table.ts for why.
  *
  * What this module adds on top is module loading and classification: a route
  * that default-exports a component renders HTML; one that exports HTTP method
@@ -15,7 +16,7 @@ import { resolve } from "node:path";
 import { compileRoutes, matchRoute } from "./route-table.ts";
 import type { CompiledRoute } from "./route-table.ts";
 import type { Middleware, Locals } from "./middleware.ts";
-import type { Child, Component } from "./types.ts";
+import type { Child, Component, PageComponent } from "./types.ts";
 
 /** `Bun.file().exists()` reports false for directories, so stat instead. */
 export function directoryExists(path: string): boolean {
@@ -51,7 +52,7 @@ export interface PageRoute {
   name: string;
   filePath: string;
   params: Record<string, string>;
-  component: Component<PageProps>;
+  component: PageComponent<PageProps>;
   /** The module's optional `head` export (see `HeadFn`). */
   head?: HeadFn;
 }
@@ -196,7 +197,7 @@ export class Router {
         name: pattern,
         filePath,
         params,
-        component: module.default as Component<PageProps>,
+        component: module.default as PageComponent<PageProps>,
         head: typeof module.head === "function" ? (module.head as HeadFn) : undefined,
       };
     }
@@ -214,13 +215,13 @@ export class Router {
    * them into the server bundle like any other route and dev picks up edits to
    * them without a restart — neither needed a special case.
    */
-  async errorPage(name: ErrorPageName): Promise<Component<ErrorPageProps> | null> {
+  async errorPage(name: ErrorPageName): Promise<PageComponent<ErrorPageProps> | null> {
     const filePath = this.routes[`/${name}`];
     if (!filePath) return null;
 
     const module = await this.#import(`/${name}`, filePath);
     return typeof module.default === "function"
-      ? (module.default as Component<ErrorPageProps>)
+      ? (module.default as PageComponent<ErrorPageProps>)
       : null;
   }
 
