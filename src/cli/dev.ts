@@ -130,7 +130,12 @@ function isSameOrigin(request: Request, url: URL): boolean {
   }
 }
 
-export async function dev(root: string): Promise<void> {
+export interface DevOptions {
+  /** Open a browser at the served URL. Only on a first start, never a reload. */
+  open?: boolean;
+}
+
+export async function dev(root: string, options: DevOptions = {}): Promise<void> {
   if (!process.env[HOT_SENTINEL]) reexecUnderHot();
 
   // A re-evaluation means something the server imports actually changed.
@@ -255,8 +260,35 @@ export async function dev(root: string): Promise<void> {
   }
 
   const count = state.watchers.length;
-  console.log(`[stoneware] dev server on http://${app.config.hostname}:${server.port}`);
+  const url = `http://${app.config.hostname}:${server.port}`;
+  console.log(`[stoneware] dev server on ${url}`);
   console.log(`[stoneware] watching ${count} director${count === 1 ? "y" : "ies"}`);
+
+  // Only on a first start. `bun --hot` re-evaluates this module on every edit,
+  // so opening unconditionally would spawn a browser tab per keystroke-save.
+  if (options.open && !isReload) openBrowser(url);
+}
+
+/**
+ * Open the default browser, best-effort.
+ *
+ * Failure is ignored on purpose: there may be no browser, no display, or no
+ * permission to spawn one, and none of those are reasons to stop a dev server
+ * that has already started successfully.
+ */
+function openBrowser(url: string): void {
+  const command =
+    process.platform === "win32"
+      ? ["cmd", "/c", "start", "", url]
+      : process.platform === "darwin"
+        ? ["open", url]
+        : ["xdg-open", url];
+
+  try {
+    Bun.spawn(command, { stdout: "ignore", stderr: "ignore" }).unref();
+  } catch {
+    // Nothing to say - the URL is already printed above.
+  }
 }
 
 /**

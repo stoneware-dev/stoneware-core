@@ -40,15 +40,24 @@ describe("static export", () => {
     expect(html).toStartWith("<!DOCTYPE html>");
   });
 
-  test("output is what the server would have sent", async () => {
+  test("output is what the server would have sent, plus the CSP it cannot send", async () => {
     // Export fetches through the ordinary pipeline rather than a second
     // rendering path, so there is nothing that can drift between the two.
+    //
+    // There is exactly one deliberate difference, and it is asserted rather than
+    // waved through: the export embeds the policy as <meta http-equiv>, because
+    // static files carry no headers. The server has no need of the tag - it
+    // sends the real header, which is strictly stronger. Removing that one tag
+    // must leave the two byte-identical, or something else has drifted.
     const { createApp } = await import("../src/server.ts");
     const app = await createApp({ root: FIXTURE_ROOT }, { dev: false });
     const served = await (await app.fetch(new Request("http://localhost/plain"))).text();
 
     const written = await Bun.file(join(OUT_DIR, "plain", "index.html")).text();
-    expect(written).toBe(served);
+
+    expect(written).toContain('<meta http-equiv="Content-Security-Policy"');
+    const withoutCSP = written.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, "");
+    expect(withoutCSP).toBe(served);
   });
 
   test("copies island chunks and public/ alongside the pages", () => {

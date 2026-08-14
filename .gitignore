@@ -12,6 +12,8 @@ node_modules/
 .relocatable-build/
 .relocatable-run-elsewhere/
 .vercel-target-test/
+.cli-commands-test/
+.export-csp-test/
 # Vercel's own local artefacts, if the CLI is ever run here.
 .vercel/
 

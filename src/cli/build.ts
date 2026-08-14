@@ -17,7 +17,7 @@
  */
 
 import { mkdir, rm } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { basename, join, relative, resolve } from "node:path";
 import { buildIslands } from "../build.ts";
 import { loadConfigFile, resolveConfig } from "../config.ts";
 import { discoverIslands } from "../islands.ts";
@@ -27,6 +27,8 @@ export interface BuildResult {
   serverBundle: string;
   islandCount: number;
   routeCount: number;
+  /** Client chunk sizes in bytes, by island name. Sorted largest first. */
+  islandSizes: { name: string; bytes: number }[];
 }
 
 export async function build(root: string): Promise<BuildResult> {
@@ -38,7 +40,23 @@ export async function build(root: string): Promise<BuildResult> {
 
   // --- Islands: one browser chunk each, plus the shared runtime chunk. -------
   const islands = await discoverIslands(config.islandsDir);
-  const { manifest } = await buildIslands({ islands, outDir: config.outDir, dev: false });
+  const { manifest, staticDir } = await buildIslands({
+    islands,
+    outDir: config.outDir,
+    dev: false,
+  });
+
+  // The whole premise is that JavaScript is opt-in, and an opt-in cost that is
+  // never shown is not a cost anyone weighs. Reported per island so the number
+  // sits next to the name of the thing that caused it.
+  const islandSizes = (
+    await Promise.all(
+      Object.entries(manifest).map(async ([name, chunk]) => ({
+        name,
+        bytes: await Bun.file(join(staticDir, basename(chunk))).size,
+      })),
+    )
+  ).sort((a, b) => b.bytes - a.bytes);
 
   // --- Server: every route inlined into a single bundle. --------------------
   const router = new Router(config.routesDir);
@@ -83,6 +101,7 @@ export async function build(root: string): Promise<BuildResult> {
     serverBundle: join(config.outDir, "server.js"),
     islandCount: Object.keys(manifest).length,
     routeCount: routes.length,
+    islandSizes,
   };
 }
 
@@ -175,9 +194,26 @@ function serverEntrySource(options: EntrySourceOptions): string {
 
 /** Human-readable summary for the CLI. */
 export function describeBuild(result: BuildResult, root: string): string {
-  return [
+  const lines = [
     `  server   ${relative(root, result.serverBundle).replace(/\\/g, "/")}`,
     `  routes   ${result.routeCount}`,
     `  islands  ${result.islandCount}`,
-  ].join("\n");
+  ];
+
+  // Per island, because a total tells you the page is heavy and a breakdown
+  // tells you which component made it heavy.
+  for (const { name, bytes } of result.islandSizes) {
+    lines.push(`             ${name.padEnd(20)} ${formatBytes(bytes)}`);
+  }
+
+  if (result.islandSizes.length > 1) {
+    const total = result.islandSizes.reduce((sum, island) => sum + island.bytes, 0);
+    lines.push(`             ${"total".padEnd(20)} ${formatBytes(total)}`);
+  }
+
+  return lines.join("\n");
+}
+
+function formatBytes(bytes: number): string {
+  return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} kB`;
 }

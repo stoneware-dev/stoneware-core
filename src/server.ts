@@ -59,6 +59,15 @@ export interface CreateAppOptions {
    * uses this for its live-reload client; production never sets it.
    */
   documentSuffix?: string;
+  /**
+   * Embed the Content-Security-Policy as `<meta http-equiv>` in every page.
+   *
+   * Set only by `stoneware export`. A running server sends the policy as a
+   * header, which is strictly better - it covers `frame-ancestors`, which a meta
+   * tag cannot. Static files carry no headers at all, so for an export the
+   * choice is a partial policy or none.
+   */
+  embedCSPMeta?: boolean;
 }
 
 export async function createApp(
@@ -342,6 +351,7 @@ export async function createApp(
       stylesheet,
       head: rendered.head,
       preloads: [...context.preloads],
+      cspMeta: options.embedCSPMeta && config.csp !== false ? config.csp : null,
     });
 
     warnIfSEOStranded(context.seoOutsideHead, rendered.body.html, route.name, dev);
@@ -433,6 +443,7 @@ export async function createApp(
           title: String(status),
           suffix: options.documentSuffix,
           stylesheet,
+          cspMeta: options.embedCSPMeta && config.csp !== false ? config.csp : null,
         });
 
         return htmlResponse(html, status, request);
@@ -552,7 +563,7 @@ function resolvesInsideRoot(root: string, target: string): boolean {
   return real === realRoot || real.startsWith(realRoot + sep);
 }
 
-function safeJoin(
+export function safeJoin(
   rootDir: string,
   relativePath: string,
   followSymlinks = false,

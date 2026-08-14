@@ -7,6 +7,9 @@ import { join, relative, resolve } from "node:path";
 import { build, describeBuild } from "./build.ts";
 import { dev } from "./dev.ts";
 import { exportSite } from "./export.ts";
+import { describeDoctor, doctor } from "./doctor.ts";
+import { describePreview, preview } from "./preview.ts";
+import { describeRoutes, listRoutes } from "./routes.ts";
 import { emitVercel } from "./vercel.ts";
 
 const USAGE = `stoneware - a Bun-native, server-first web framework
@@ -16,12 +19,16 @@ Usage
   stoneware build   [--root <dir>] [--target <t>] Production build (server + island bundles)
   stoneware start   [--root <dir>] [--port <n>]   Run the production server bundle
   stoneware export  [--root <dir>] [--out <dir>]   Prerender to static HTML
+  stoneware preview [--root <dir>] [--out <dir>]   Serve a static export as a host would
+  stoneware routes  [--root <dir>]                Print the route table, in match order
+  stoneware doctor  [--root <dir>]                Check the project setup
 
 Options
   --root <dir>     Project directory (default: current directory)
   --port <n>       Port to listen on (default: 3000, or $PORT)
   --target <t>     Deployment target for \`build\`: node (default) or vercel
   -h, --help       Show this message
+      --open       Open a browser when the dev server starts
   -v, --version    Print the Stoneware and Bun versions
 `;
 
@@ -36,6 +43,7 @@ interface Args {
   target: string | undefined;
   help: boolean;
   version: boolean;
+  open: boolean;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -47,12 +55,14 @@ function parseArgs(argv: string[]): Args {
     target: undefined,
     help: false,
     version: false,
+    open: false,
   };
 
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index]!;
     if (arg === "-h" || arg === "--help") args.help = true;
     else if (arg === "-v" || arg === "--version") args.version = true;
+    else if (arg === "--open") args.open = true;
     else if (arg === "--root") args.root = resolve(argv[++index] ?? ".");
     else if (arg === "--port") args.port = argv[++index];
     else if (arg === "--out") args.out = argv[++index];
@@ -95,7 +105,7 @@ async function main(): Promise<void> {
 
   switch (args.command) {
     case "dev":
-      await dev(args.root);
+      await dev(args.root, { open: args.open });
       break;
 
     case "export": {
@@ -105,6 +115,21 @@ async function main(): Promise<void> {
       console.log(`[stoneware] exported ${result.pages} page(s) in ${elapsed}ms`);
       console.log(`  output   ${result.outDir}`);
       for (const skip of result.skipped) console.log(`  skipped  ${skip}`);
+
+      if (result.csp === false) {
+        console.log(`  csp      disabled in config, so none was embedded`);
+      } else {
+        console.log(`  csp      embedded in every page, and written to _headers`);
+        if (result.headerOnly.length > 0) {
+          // Naming them beats implying the export is protected identically to
+          // the server. On Netlify and Cloudflare Pages _headers restores them;
+          // anywhere else they are genuinely absent.
+          console.log(
+            `           ${result.headerOnly.join("; ")} needs a real header —\n` +
+              `           _headers covers Netlify and Cloudflare Pages, other hosts need config`,
+          );
+        }
+      }
       break;
     }
 
@@ -130,6 +155,29 @@ async function main(): Promise<void> {
         if (vercel.wroteConfig) console.log(`  config   vercel.json`);
         if (vercel.configNote) console.warn(`[stoneware] ${vercel.configNote}`);
       }
+      break;
+    }
+
+    case "preview": {
+      const result = await preview(args.root, args.out ?? "dist");
+      console.log(`[stoneware] preview`);
+      console.log(describePreview(result, args.root));
+      break;
+    }
+
+    case "routes": {
+      const result = await listRoutes(args.root);
+      console.log(describeRoutes(result));
+      break;
+    }
+
+    case "doctor": {
+      const result = await doctor(args.root);
+      console.log(describeDoctor(result));
+      // Exit non-zero on an error so this is usable in CI, but not on a warning:
+      // a warning is a judgement call, and failing a pipeline over one would
+      // teach people to stop running it.
+      if (result.errors > 0) process.exit(1);
       break;
     }
 

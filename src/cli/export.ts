@@ -12,7 +12,7 @@ import { cp, mkdir, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { buildIslands, buildStyles } from "../build.ts";
-import { loadConfigFile, resolveConfig } from "../config.ts";
+import { SECURITY_HEADERS, loadConfigFile, resolveConfig } from "../config.ts";
 import { discoverIslands } from "../islands.ts";
 import { createApp } from "../server.ts";
 import { Router, isReservedRoute } from "../router.ts";
@@ -21,6 +21,10 @@ export interface ExportResult {
   outDir: string;
   pages: number;
   skipped: string[];
+  /** The policy embedded in every page, or null when the project disabled it. */
+  csp: string | false;
+  /** Directives that only a real header can carry, so a meta tag drops them. */
+  headerOnly: string[];
 }
 
 /**
@@ -44,7 +48,10 @@ export async function exportSite(root: string, outDirName = "dist"): Promise<Exp
     dev: false,
   });
 
-  const app = await createApp({ ...userConfig, root }, { dev: false });
+  // The one place this is switched on. A running server sends the policy as a
+  // header, which is strictly stronger; static files carry no headers, so an
+  // export either embeds what it can or ships with no policy at all.
+  const app = await createApp({ ...userConfig, root }, { dev: false, embedCSPMeta: true });
 
   const router = new Router(config.routesDir);
   await router.init();
@@ -123,7 +130,9 @@ export async function exportSite(root: string, outDirName = "dist"): Promise<Exp
     await cp(config.publicDir, outDir, { recursive: true });
   }
 
-  return { outDir, pages, skipped };
+  const headerOnly = await writeHostHeaders(outDir, config.csp);
+
+  return { outDir, pages, skipped, csp: config.csp, headerOnly };
 }
 
 async function expand(
@@ -174,4 +183,33 @@ async function writePage(outDir: string, url: string, html: string): Promise<voi
   const target = join(outDir, relative);
   await mkdir(dirname(target), { recursive: true });
   await Bun.write(target, html);
+}
+
+/**
+ * Write a `_headers` file, so hosts that read one send the real thing.
+ *
+ * Netlify and Cloudflare Pages both consume this format, and it is inert
+ * everywhere else - a stray text file on GitHub Pages costs nothing. It carries
+ * the full policy including `frame-ancestors`, which the embedded meta tag
+ * cannot express, so on those two hosts the export is protected exactly as the
+ * server would protect it.
+ *
+ * Returns the directives that only a header can carry, so the CLI can say what
+ * a host without header support is giving up rather than implying parity.
+ */
+async function writeHostHeaders(outDir: string, csp: string | false): Promise<string[]> {
+  const lines = ["/*"];
+
+  if (csp !== false) lines.push(`  Content-Security-Policy: ${csp}`);
+  for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
+    lines.push(`  ${name}: ${value}`);
+  }
+
+  await Bun.write(join(outDir, "_headers"), lines.join("\n") + "\n");
+
+  if (csp === false) return [];
+  return csp
+    .split(";")
+    .map((directive) => directive.trim())
+    .filter((directive) => /^(frame-ancestors|report-uri|report-to|sandbox)\b/i.test(directive));
 }

@@ -18,6 +18,7 @@ import { cp, mkdir, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { build } from "../src/cli/build.ts";
+import type { BuildResult } from "../src/cli/build.ts";
 import { createApp } from "../src/server.ts";
 import { Router, scanRoutes } from "../src/router.ts";
 
@@ -30,6 +31,7 @@ const buildDir = join(import.meta.dir, "..", ".relocatable-build");
 const runDir = join(import.meta.dir, "..", ".relocatable-run-elsewhere");
 
 let bundleText = "";
+let buildResult: BuildResult;
 
 beforeAll(async () => {
   process.env.STONEWARE_CSRF_SECRET = "relocatable-test-secret-0123456789";
@@ -41,7 +43,7 @@ beforeAll(async () => {
   await mkdir(buildDir, { recursive: true });
   await cp(FIXTURE_ROOT, buildDir, { recursive: true });
   await rm(join(buildDir, ".stoneware"), { recursive: true, force: true });
-  await build(buildDir);
+  buildResult = await build(buildDir);
   bundleText = await Bun.file(join(buildDir, ".stoneware", "server.js")).text();
 
   // ...then move the result somewhere else entirely, and take the source tree
@@ -164,5 +166,25 @@ describe("the manifest agrees with a filesystem scan", () => {
     await router.init();
 
     expect(Object.keys(router.routes).sort()).toEqual(Object.keys(scanned).sort());
+  });
+});
+
+describe("the build reports what each island costs", () => {
+  test("a size per island, largest first", () => {
+    // "JavaScript is opt-in" is only a claim anyone can check if the cost is
+    // shown at the moment it is incurred. Asserted here rather than in its own
+    // file because this one already runs a real build, and two concurrent
+    // Bun.build calls race on Windows.
+    expect(buildResult.islandSizes.length).toBeGreaterThan(0);
+    for (const island of buildResult.islandSizes) expect(island.bytes).toBeGreaterThan(0);
+
+    const sizes = buildResult.islandSizes.map((island) => island.bytes);
+    expect([...sizes].sort((a, b) => b - a)).toEqual(sizes);
+  });
+
+  test("every built island is named", () => {
+    const names = buildResult.islandSizes.map((island) => island.name);
+    expect(names).toContain("Counter");
+    expect(names).toContain("Badge");
   });
 });

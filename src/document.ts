@@ -25,6 +25,15 @@ export interface DocumentOptions {
   stylesheet?: string | null;
   /** Markup from the route's `head` export, already rendered to a string. */
   head?: string;
+  /**
+   * A Content-Security-Policy to embed as `<meta http-equiv>`.
+   *
+   * Only set by `stoneware export`. A CSP is normally a response header, and a
+   * directory of static files cannot carry one - so an exported site has no
+   * policy at all unless the host is configured to send it, which silently
+   * loses the defence the server applies for free.
+   */
+  cspMeta?: string | null;
   /** `<link rel="preload">` tags collected during the body render. */
   preloads?: string[];
 }
@@ -60,11 +69,16 @@ export function buildDocument(options: DocumentOptions): string {
     (options.head ?? "") +
     (options.stylesheet ? styleLink(options.stylesheet) : "");
 
+  // A meta policy only governs what is declared *after* it, so it goes as early
+  // in the head as it can - ahead of any preload, stylesheet or script.
+  const cspTag = options.cspMeta ? metaCSP(options.cspMeta) : "";
+
   if (isFullDocument(html)) {
     // A page that owns its whole document still gets the bundled stylesheet:
     // co-located CSS is collected by the build, so there is no <link> for the
     // author to write and none to forget.
-    const withHead = headExtra ? injectBeforeHeadClose(html, headExtra) : html;
+    const withCSP = cspTag ? injectAfterHeadOpen(html, cspTag) : html;
+    const withHead = headExtra ? injectBeforeHeadClose(withCSP, headExtra) : withCSP;
     return DOCTYPE + "\n" + injectBeforeBodyClose(withHead, scripts);
   }
 
@@ -76,7 +90,10 @@ export function buildDocument(options: DocumentOptions): string {
 
   return (
     `${DOCTYPE}\n<html lang="${lang}">` +
+    // charset stays first: it has to appear within the first 1024 bytes, and a
+    // parser that has not reached it yet is guessing at the bytes that follow.
     `<head><meta charset="utf-8">` +
+    cspTag +
     `<meta name="viewport" content="width=device-width, initial-scale=1">` +
     title +
     headExtra +
@@ -169,6 +186,55 @@ function injectBeforeBodyClose(html: string, injection: string): string {
 
 function styleLink(href: string): string {
   return `<link rel="stylesheet" href="${Bun.escapeHTML(href)}">`;
+}
+
+/**
+ * Directives a meta policy cannot express.
+ *
+ * `frame-ancestors`, `report-uri` and `sandbox` are ignored when delivered in a
+ * meta tag - the spec says so, and browsers comply silently. Emitting them there
+ * would suggest a protection that is not present, so they are dropped and the
+ * export reports what a header-less host loses.
+ */
+const HEADER_ONLY_DIRECTIVES = /^\s*(frame-ancestors|report-uri|report-to|sandbox)\b/i;
+
+/** Strip the header-only directives and render the tag. */
+export function metaCSP(policy: string): string {
+  const usable = policy
+    .split(";")
+    .filter((directive) => directive.trim() !== "" && !HEADER_ONLY_DIRECTIVES.test(directive))
+    .map((directive) => directive.trim())
+    .join("; ");
+
+  if (usable === "") return "";
+  return `<meta http-equiv="Content-Security-Policy" content="${Bun.escapeHTML(usable)}">`;
+}
+
+/**
+ * Insert at the top of `<head>`, but after a charset declaration if one is
+ * already there.
+ *
+ * Two constraints pull in opposite directions and both are satisfiable. A
+ * charset has to appear within the first 1024 bytes, because until the parser
+ * reaches it every byte is a guess. A meta policy only governs what is declared
+ * *after* it, so it has to precede the first stylesheet, preload or script.
+ * Slotting in between honours both, and a page that declares no charset simply
+ * gets the policy first.
+ */
+function injectAfterHeadOpen(html: string, injection: string): string {
+  // Matches `<head>` and `<head lang="...">` alike; the tag ends at the first
+  // `>` because a head element carries no attribute that could contain one.
+  const head = /<head[^>]*>/i.exec(html);
+  if (!head) return html;
+
+  let at = head.index + head[0].length;
+
+  // Only a charset that already sits at the very top of the head: one appearing
+  // after a stylesheet is too late to step around.
+  const charset = /^\s*<meta[^>]*charset[^>]*>/i.exec(html.slice(at));
+  if (charset) at += charset[0].length;
+
+  return html.slice(0, at) + injection + html.slice(at);
 }
 
 /**
