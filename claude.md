@@ -199,7 +199,7 @@ Resolved at implementation start, 2026-08-12:
 
 - [x] **Final project name** - `stoneware`. Package `stoneware`, CLI binary `stoneware`, scaffold `create-stoneware`.
       Chosen after `kiln` was found to be taken on npm (an abandoned 2022 package, v0.0.1). Both
-      `stoneware` and `create-stoneware` were verified available. Repo: github.com/RANJEETJ06/Stoneware.
+      `stoneware` and `create-stoneware` were verified available. Repo: github.com/stoneware-dev/stoneware-core.
 - [x] **License** - MIT.
 - [x] **File extension** - plain `.tsx`, directory convention only. The custom `.stoneware.tsx` extension
       was dropped: it bought no behavior the `routes/` vs `islands/` split does not already provide,

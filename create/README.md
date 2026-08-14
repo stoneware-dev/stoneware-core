@@ -1,6 +1,6 @@
 # create-stoneware
 
-Scaffold a new [Stoneware](https://github.com/RANJEETJ06/Stoneware) project.
+Scaffold a new [Stoneware](https://github.com/stoneware-dev/stoneware-core) project.
 
 ```sh
 bunx create-stoneware my-site

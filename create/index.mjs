@@ -321,7 +321,7 @@ function escapeXML(value: string): string {
 
   "README.md": (name) => `# ${name}
 
-Built with [stoneware](https://github.com/RANJEETJ06/Stoneware) - server-first, Bun-native.
+Built with [stoneware](https://github.com/stoneware-dev/stoneware-core) - server-first, Bun-native.
 
     bun install
     bun run dev

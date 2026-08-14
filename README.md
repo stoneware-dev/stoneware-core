@@ -30,9 +30,9 @@ dev server, the build — runs on Bun, and `stoneware` says so with an install l
 
 Full documentation lives on the Stoneware docs site, which is itself built with Stoneware:
 
-**→ [Read the documentation](https://github.com/RANJEETJ06/stoneware-docs)**
+**→ [Read the documentation](https://github.com/stoneware-dev/stoneware-docs)**
 
-It covers the [full benchmark](https://github.com/RANJEETJ06/stoneware-docs), routing, islands and signals, hydration directives (`client:visible`, `client:idle`,
+It covers the [full benchmark](https://github.com/stoneware-dev/stoneware-docs), routing, islands and signals, hydration directives (`client:visible`, `client:idle`,
 `client:media`), co-located CSS, head metadata, `seo()` and `<Image>`, middleware, server actions and CSRF, security
 defaults, error pages, caching, the CLI, and deploying — including static export to hosts that
 cannot run Bun.
@@ -131,7 +131,7 @@ Bun >= 1.3.0. The framework is built on `Bun.serve`, `Bun.build`, `Bun.escapeHTM
 ## Contributing
 
 The documentation site lives in its own repository,
-[stoneware-docs](https://github.com/RANJEETJ06/stoneware-docs). It consumes `stoneware`
+[stoneware-docs](https://github.com/stoneware-dev/stoneware-docs). It consumes `stoneware`
 from npm exactly as any other project does, so it cannot quietly depend on unreleased behaviour.
 
 ```sh

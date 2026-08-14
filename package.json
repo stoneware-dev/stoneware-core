@@ -42,11 +42,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/RANJEETJ06/Stoneware.git"
+    "url": "git+https://github.com/stoneware-dev/stoneware-core.git"
   },
-  "homepage": "https://github.com/RANJEETJ06/Stoneware#readme",
+  "homepage": "https://github.com/stoneware-dev/stoneware-core#readme",
   "bugs": {
-    "url": "https://github.com/RANJEETJ06/Stoneware/issues"
+    "url": "https://github.com/stoneware-dev/stoneware-core/issues"
   },
   "keywords": [
     "bun",
