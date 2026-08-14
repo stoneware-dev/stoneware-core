@@ -3,30 +3,36 @@
  * The `stoneware` CLI (CLAUDE.md §13).
  */
 
-import { resolve } from "node:path";
+import { relative, resolve } from "node:path";
 import { build, describeBuild } from "./build.ts";
 import { dev } from "./dev.ts";
 import { exportSite } from "./export.ts";
+import { emitVercel } from "./vercel.ts";
 
 const USAGE = `stoneware - a Bun-native, server-first web framework
 
 Usage
   stoneware dev     [--root <dir>] [--port <n>]   Start the dev server with hot reload
-  stoneware build   [--root <dir>]                Production build (server + island bundles)
+  stoneware build   [--root <dir>] [--target <t>] Production build (server + island bundles)
   stoneware start   [--root <dir>] [--port <n>]   Run the production server bundle
   stoneware export  [--root <dir>] [--out <dir>]   Prerender to static HTML
 
 Options
-  --root <dir>   Project directory (default: current directory)
-  --port <n>     Port to listen on (default: 3000, or $PORT)
-  -h, --help     Show this message
+  --root <dir>     Project directory (default: current directory)
+  --port <n>       Port to listen on (default: 3000, or $PORT)
+  --target <t>     Deployment target for \`build\`: node (default) or vercel
+  -h, --help       Show this message
 `;
+
+const TARGETS = ["default", "vercel"] as const;
+type Target = (typeof TARGETS)[number];
 
 interface Args {
   command: string | undefined;
   root: string;
   port: string | undefined;
   out: string | undefined;
+  target: string | undefined;
   help: boolean;
 }
 
@@ -36,6 +42,7 @@ function parseArgs(argv: string[]): Args {
     root: process.cwd(),
     port: undefined,
     out: undefined,
+    target: undefined,
     help: false,
   };
 
@@ -45,6 +52,7 @@ function parseArgs(argv: string[]): Args {
     else if (arg === "--root") args.root = resolve(argv[++index] ?? ".");
     else if (arg === "--port") args.port = argv[++index];
     else if (arg === "--out") args.out = argv[++index];
+    else if (arg === "--target") args.target = argv[++index];
     else if (!arg.startsWith("-") && args.command === undefined) args.command = arg;
   }
 
@@ -78,11 +86,27 @@ async function main(): Promise<void> {
     }
 
     case "build": {
+      const target = (args.target ?? "default") as Target;
+      if (!TARGETS.includes(target)) {
+        console.error(
+          `[stoneware] Unknown target: ${args.target}. Expected one of ${TARGETS.join(", ")}.`,
+        );
+        process.exit(1);
+      }
+
       const started = performance.now();
       const result = await build(args.root);
       const elapsed = Math.round(performance.now() - started);
       console.log(`[stoneware] build complete in ${elapsed}ms`);
       console.log(describeBuild(result, args.root));
+
+      if (target === "vercel") {
+        const vercel = await emitVercel(args.root);
+        console.log(`  target   vercel`);
+        console.log(`  entry    ${relative(args.root, vercel.entrypoint).replace(/\\/g, "/")}`);
+        if (vercel.wroteConfig) console.log(`  config   vercel.json`);
+        if (vercel.configNote) console.warn(`[stoneware] ${vercel.configNote}`);
+      }
       break;
     }
 

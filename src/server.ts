@@ -45,10 +45,15 @@ export interface StonewareApp {
 
 export interface CreateAppOptions {
   dev?: boolean;
-  /** Route modules inlined by a production build, keyed by absolute path. */
+  /** Route modules inlined by a production build, keyed by route pattern. */
   preloadedRoutes?: Map<string, Record<string, unknown>>;
   /** Island components inlined by a production build, keyed by island name. */
   preloadedIslands?: Map<string, Component<any>>;
+  /**
+   * Pattern table from a production build. With it the router never reads
+   * `routes/`, so the built server runs where the source tree does not exist.
+   */
+  routeManifest?: Record<string, string>;
   /**
    * Extra markup injected before `</body>` on every HTML page. The dev server
    * uses this for its live-reload client; production never sets it.
@@ -63,7 +68,11 @@ export async function createApp(
   const dev = options.dev ?? false;
   const config = resolveConfig(userConfig, dev);
 
-  const router = new Router(config.routesDir, { dev, preloaded: options.preloadedRoutes });
+  const router = new Router(config.routesDir, {
+    dev,
+    preloaded: options.preloadedRoutes,
+    manifest: options.routeManifest,
+  });
   await router.init();
 
   let islandRegistry = new Map<Component<any>, string>();
@@ -72,17 +81,30 @@ export async function createApp(
   let staticDir = join(config.outDir, "static");
 
   async function rebuildIslands(): Promise<void> {
-    const entries = await discoverIslands(config.islandsDir);
-
     // The registry maps component identity to island name, so it is needed
     // whether or not the client bundles have to be rebuilt.
+    //
+    // A production build hands the components over directly, and that is the
+    // only source consulted when it does. Re-deriving the list from `islands/`
+    // would make a built server depend on the source tree it was built from
+    // still sitting beside it — which it does not inside a function bundle or a
+    // relocated container image. The failure mode was silent in the worst way:
+    // pages rendered, every island fell back to plain markup, and nothing was
+    // logged because an empty registry is indistinguishable from a page that
+    // legitimately has no islands.
     islandRegistry = new Map();
     if (options.preloadedIslands) {
-      for (const entry of entries) {
-        const component = options.preloadedIslands.get(entry.name);
-        if (component) islandRegistry.set(component, entry.name);
+      for (const [name, component] of options.preloadedIslands) {
+        islandRegistry.set(component, name);
       }
-    } else {
+    }
+
+    // Only scan when something actually needs the files: dev rebuilds chunks
+    // from them, and an app created without a build has no other source.
+    const entries =
+      dev || !options.preloadedIslands ? await discoverIslands(config.islandsDir) : [];
+
+    if (!options.preloadedIslands) {
       islandRegistry = buildIslandRegistry(await loadIslands(entries));
     }
 

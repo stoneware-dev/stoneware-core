@@ -12,6 +12,8 @@
 
 import { existsSync, statSync } from "node:fs";
 import { resolve } from "node:path";
+import { compileRoutes, matchRoute } from "./route-table.ts";
+import type { CompiledRoute } from "./route-table.ts";
 import type { Middleware, Locals } from "./middleware.ts";
 import type { Child, Component } from "./types.ts";
 
@@ -99,82 +101,100 @@ export interface RouterOptions {
   /** In dev, modules are re-imported on every request so edits take effect. */
   dev?: boolean;
   /**
-   * Route modules already present in the running bundle, keyed by absolute
-   * source path.
+   * Route modules already present in the running bundle, keyed by route
+   * pattern.
    *
    * A production build inlines every route this way, so serving a request
-   * involves no filesystem read and no transpilation. Path *matching* still
-   * comes from `Bun.FileSystemRouter`, so `routes/` must exist at runtime.
+   * involves no filesystem read and no transpilation.
+   *
+   * Keyed by pattern rather than by file path on purpose: a path is a property
+   * of the machine that ran the build, and baking one into the bundle is what
+   * made the output unservable anywhere else. A pattern is a property of the
+   * project.
    */
   preloaded?: Map<string, Record<string, unknown>>;
+  /**
+   * A pre-built pattern table, mapping route pattern to module path.
+   *
+   * Supplied by a production build so the router never scans the filesystem.
+   * With it, `routes/` need not exist at runtime at all - which is what lets a
+   * built server run inside a serverless function or a scratch container.
+   */
+  manifest?: Record<string, string>;
 }
 
 export class Router {
   readonly routesDir: string;
-  #router: Bun.FileSystemRouter | null = null;
+  #table: Record<string, string> | null = null;
+  #compiled: CompiledRoute[] = [];
   #dev: boolean;
   #preloaded: Map<string, Record<string, unknown>>;
+  #manifest: Record<string, string> | undefined;
 
   constructor(routesDir: string, options: RouterOptions = {}) {
     this.routesDir = resolve(routesDir);
     this.#dev = options.dev ?? false;
     this.#preloaded = options.preloaded ?? new Map();
+    this.#manifest = options.manifest;
   }
 
-  /** Build (or rebuild) the route table from disk. */
+  /** Build (or rebuild) the route table. */
   async init(): Promise<void> {
+    if (this.#manifest) {
+      this.#setTable(this.#manifest);
+      return;
+    }
+
     if (!directoryExists(this.routesDir)) {
       throw new Error(
         `Routes directory not found: ${this.routesDir}\n` +
           `Create a routes/ directory with at least an index.tsx.`,
       );
     }
-    this.#router = new Bun.FileSystemRouter({
-      style: "nextjs",
-      dir: this.routesDir,
-      fileExtensions: [".tsx", ".jsx", ".ts", ".js"],
-    });
+
+    this.#setTable(scanRoutes(this.routesDir));
   }
 
   /** Pick up files added or removed since the last scan. */
   reload(): void {
-    this.#router?.reload();
+    if (this.#manifest) return;
+    if (directoryExists(this.routesDir)) this.#setTable(scanRoutes(this.routesDir));
   }
 
   /** All known route patterns, for logging and diagnostics. */
   get routes(): Record<string, string> {
-    return this.#router?.routes ?? {};
+    return this.#table ?? {};
+  }
+
+  #setTable(table: Record<string, string>): void {
+    this.#table = table;
+    this.#compiled = compileRoutes(table);
   }
 
   async match(url: URL | string): Promise<MatchedRoute | null> {
-    if (this.#router === null) {
+    if (this.#table === null) {
       throw new Error("Router.init() must be awaited before matching requests.");
     }
 
     const pathname = typeof url === "string" ? url : url.pathname;
 
-    const lookup = toMatchablePath(pathname);
-    if (lookup === null) return null;
-
-    const matched = this.#router.match(lookup);
+    const matched = matchRoute(this.#compiled, pathname);
     if (!matched) return null;
-    if (isReservedRoute(matched.name)) return null;
+    if (isReservedRoute(matched.pattern)) return null;
 
-    const params = restoreParams(matched.params);
-    if (params === null) return null;
-
-    const module = await this.#import(matched.filePath);
+    const { pattern, filePath, params } = matched;
+    const module = await this.#import(pattern, filePath);
 
     const handlers = collectHandlers(module);
     if (Object.keys(handlers).length > 0) {
-      return { kind: "action", name: matched.name, filePath: matched.filePath, params, handlers };
+      return { kind: "action", name: pattern, filePath, params, handlers };
     }
 
     if (typeof module.default === "function") {
       return {
         kind: "page",
-        name: matched.name,
-        filePath: matched.filePath,
+        name: pattern,
+        filePath,
         params,
         component: module.default as Component<PageProps>,
         head: typeof module.head === "function" ? (module.head as HeadFn) : undefined,
@@ -182,7 +202,7 @@ export class Router {
     }
 
     throw new Error(
-      `Route ${matched.filePath} exports neither a default component nor any HTTP ` +
+      `Route ${filePath} exports neither a default component nor any HTTP ` +
         `method handlers (${HTTP_METHODS.join(", ")}).`,
     );
   }
@@ -195,10 +215,10 @@ export class Router {
    * them without a restart — neither needed a special case.
    */
   async errorPage(name: ErrorPageName): Promise<Component<ErrorPageProps> | null> {
-    const filePath = this.#router?.routes[`/${name}`];
+    const filePath = this.routes[`/${name}`];
     if (!filePath) return null;
 
-    const module = await this.#import(filePath);
+    const module = await this.#import(`/${name}`, filePath);
     return typeof module.default === "function"
       ? (module.default as Component<ErrorPageProps>)
       : null;
@@ -211,15 +231,15 @@ export class Router {
    * production build inlines it and dev picks up edits without a restart.
    */
   async middleware(): Promise<Middleware | null> {
-    const filePath = this.#router?.routes["/_middleware"];
+    const filePath = this.routes["/_middleware"];
     if (!filePath) return null;
 
-    const module = await this.#import(filePath);
+    const module = await this.#import("/_middleware", filePath);
     return typeof module.default === "function" ? (module.default as Middleware) : null;
   }
 
-  async #import(filePath: string): Promise<Record<string, unknown>> {
-    const preloaded = this.#preloaded.get(resolve(filePath));
+  async #import(pattern: string, filePath: string): Promise<Record<string, unknown>> {
+    const preloaded = this.#preloaded.get(pattern);
     if (preloaded) return preloaded;
 
     const href = Bun.pathToFileURL(filePath).href;
@@ -231,66 +251,19 @@ export class Router {
 }
 
 /**
- * Stand-in for "%" while Bun does the matching.
+ * Derive the pattern table from `routes/`.
  *
- * U+FFFF is a permanent noncharacter: it is never legal in a URL and carries no
- * meaning in a path, so it cannot collide with real content. Any that somehow
- * arrives in a request is stripped before the substitution, so the mapping back
- * is unambiguous.
+ * `Bun.FileSystemRouter` is still what turns filenames into patterns - that part
+ * is a convention worth borrowing rather than reimplementing. Only its `match()`
+ * is left unused; see route-table.ts for why.
  */
-const PERCENT_SENTINEL = "￿";
-
-/**
- * Prepare a request path for `Bun.FileSystemRouter.match()`.
- *
- * Bun 1.3.14 aborts the process - a native panic, not a catchable exception -
- * when the path it is given contains "%". That includes well-formed escapes
- * such as "%41" and applies to static routes as much as dynamic ones. Since the
- * path of an incoming request is entirely attacker-controlled, handing it
- * straight to Bun is a remote denial of service: `GET /%41` is enough to take
- * the server down, and no try/catch can stop it.
- *
- * Stoneware therefore decodes the path itself and hides any surviving "%" behind a
- * sentinel for the duration of the match. See report.md.
- *
- * Returns null for malformed encoding, which the caller treats as a 404.
- */
-export function toMatchablePath(pathname: string): string | null {
-  if (pathname.includes("\0")) return null;
-  if (!pathname.includes("%") && !pathname.includes(PERCENT_SENTINEL)) return pathname;
-
-  // Masking happens *before* decoding, deliberately. Decoding first would turn
-  // "%2F" into a real "/" and let one encoded segment match a two-segment route,
-  // which is a classic path-confusion bypass. Escapes stay encoded through the
-  // match and are decoded per captured param instead.
-  return pathname.split(PERCENT_SENTINEL).join("").split("%").join(PERCENT_SENTINEL);
-}
-
-/**
- * Undo the masking and percent-decode each captured param.
- *
- * Returns null if any param carries malformed encoding, which the caller treats
- * as a non-match rather than passing a half-decoded value to a template.
- */
-function restoreParams(params: Record<string, string>): Record<string, string> | null {
-  const restored: Record<string, string> = {};
-
-  for (const [key, value] of Object.entries(params)) {
-    const encoded = value.includes(PERCENT_SENTINEL)
-      ? value.split(PERCENT_SENTINEL).join("%")
-      : value;
-
-    try {
-      const decoded = decodeURIComponent(encoded);
-      if (decoded.includes("\0")) return null;
-      restored[key] = decoded;
-    } catch {
-      // e.g. "/blog/%zz" - not a valid escape sequence.
-      return null;
-    }
-  }
-
-  return restored;
+export function scanRoutes(routesDir: string): Record<string, string> {
+  const scanner = new Bun.FileSystemRouter({
+    style: "nextjs",
+    dir: routesDir,
+    fileExtensions: [".tsx", ".jsx", ".ts", ".js"],
+  });
+  return { ...scanner.routes };
 }
 
 function collectHandlers(

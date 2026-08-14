@@ -5,6 +5,15 @@ node_modules/
 .stoneware/
 # Scratch output from the payload-budget test, removed on success.
 .stoneware-budget/
+# Scratch projects built by the build/deploy tests. These live inside the repo
+# rather than in a temp directory because the fixture's config imports
+# "stoneware" and needs the project's module resolution to find it.
+.build-security/
+.relocatable-build/
+.relocatable-run-elsewhere/
+.vercel-target-test/
+# Vercel's own local artefacts, if the CLI is ever run here.
+.vercel/
 
 # Package tarballs from `bun pm pack` / `npm pack`.
 *.tgz

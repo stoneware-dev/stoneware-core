@@ -121,6 +121,8 @@ stoneware dev     Start the dev server with hot reload
 stoneware build   Production build (server bundle + island chunks)
 stoneware start   Run the production server bundle
 stoneware export  Prerender every page to static HTML
+
+stoneware build --target vercel   Also emit Vercel's Bun-preset entrypoint
 ```
 
 ## Requirements
