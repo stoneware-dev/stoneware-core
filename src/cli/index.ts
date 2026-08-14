@@ -3,7 +3,7 @@
  * The `stoneware` CLI (CLAUDE.md §13).
  */
 
-import { relative, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { build, describeBuild } from "./build.ts";
 import { dev } from "./dev.ts";
 import { exportSite } from "./export.ts";
@@ -22,6 +22,7 @@ Options
   --port <n>       Port to listen on (default: 3000, or $PORT)
   --target <t>     Deployment target for \`build\`: node (default) or vercel
   -h, --help       Show this message
+  -v, --version    Print the Stoneware and Bun versions
 `;
 
 const TARGETS = ["default", "vercel"] as const;
@@ -34,6 +35,7 @@ interface Args {
   out: string | undefined;
   target: string | undefined;
   help: boolean;
+  version: boolean;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -44,11 +46,13 @@ function parseArgs(argv: string[]): Args {
     out: undefined,
     target: undefined,
     help: false,
+    version: false,
   };
 
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index]!;
     if (arg === "-h" || arg === "--help") args.help = true;
+    else if (arg === "-v" || arg === "--version") args.version = true;
     else if (arg === "--root") args.root = resolve(argv[++index] ?? ".");
     else if (arg === "--port") args.port = argv[++index];
     else if (arg === "--out") args.out = argv[++index];
@@ -59,8 +63,27 @@ function parseArgs(argv: string[]): Args {
   return args;
 }
 
+/**
+ * Both versions on one line.
+ *
+ * Bun's is included because it is half of any useful bug report: the framework
+ * is built on Bun's own primitives, and one of them has already shipped a
+ * request-triggerable panic. "Which Bun?" is the first question either way, so
+ * asking once is cheaper than asking twice.
+ */
+async function versionLine(): Promise<string> {
+  const manifest = join(import.meta.dir, "..", "..", "package.json");
+  const { version } = (await Bun.file(manifest).json()) as { version: string };
+  return `stoneware ${version} (bun ${Bun.version})`;
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(Bun.argv.slice(2));
+
+  if (args.version) {
+    console.log(await versionLine());
+    process.exit(0);
+  }
 
   if (args.help || args.command === undefined) {
     console.log(USAGE);

@@ -22,7 +22,7 @@ Please include, as far as you have them:
 
 - what an attacker can do, and what they need in order to do it
 - a minimal reproduction — a route, a template, a request
-- the Stoneware and Bun versions (`stoneware --help` and `bun --version`)
+- the Stoneware and Bun versions — `stoneware --version` prints both
 - whether it reproduces on a project created by `create-stoneware`
 
 A proof of concept is welcome but not required. A clear description of the mechanism
