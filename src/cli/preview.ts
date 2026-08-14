@@ -11,10 +11,13 @@
  * Before this existed, the only way to check an export was to deploy it.
  *
  * What it deliberately does *not* do is add the framework's security headers. A
- * Content-Security-Policy is a response header, and static files do not carry
- * one - so an exported site has no CSP until the host is configured to send it.
- * A preview that quietly added the header back would hide exactly the difference
- * it exists to show, so it prints the warning instead.
+ * preview that sent them would hide the one difference it exists to show: a
+ * static host sends only what the files themselves carry.
+ *
+ * Since 0.1.4 that is more than nothing. An export embeds the policy as
+ * `<meta http-equiv>` in every page, so what this serves is genuinely what a
+ * visitor gets - minus the directives a meta tag cannot express, which live in
+ * the `_headers` file and are restored by hosts that read it.
  */
 
 import { existsSync } from "node:fs";
@@ -57,8 +60,10 @@ export async function preview(
       if (file) {
         return new Response(file, {
           headers: {
-            // No CSP and no security headers, deliberately - see the note above.
-            // What a static host sends is what this sends.
+            // No CSP header, deliberately: the page carries the policy itself,
+            // and sending a header too would test something no host will do.
+            // nosniff is the exception - every static host sets it, so leaving
+            // it out would be the unrealistic choice.
             "Cache-Control": "no-store",
             "X-Content-Type-Options": "nosniff",
           },
@@ -110,11 +115,14 @@ export function describePreview(result: PreviewResult, root: string): string {
     `  serving  ${result.dir.replace(root, ".").replace(/\\/g, "/")}`,
     `  url      http://${result.hostname}:${result.port}`,
     ``,
-    `  This mirrors a static host: no Content-Security-Policy and no security`,
-    `  headers, because static files cannot carry response headers. Configure`,
-    `  them on the host - _headers on Netlify and Cloudflare Pages, or the`,
-    `  equivalent - or the exported site ships without the policy the server`,
-    `  applies automatically.`,
+    `  No response headers are sent, because a static host has none to send.`,
+    `  The policy still applies: every page carries it as <meta http-equiv>,`,
+    `  which is what you are testing against here.`,
+    ``,
+    `  What a meta tag cannot carry - frame-ancestors, report-uri, sandbox -`,
+    `  is in the _headers file beside the pages. Netlify and Cloudflare Pages`,
+    `  read that and send the full policy; this preview does not, so treat`,
+    `  clickjacking protection as untested rather than absent.`,
   ];
   return lines.join("\n");
 }

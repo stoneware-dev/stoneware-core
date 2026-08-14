@@ -158,3 +158,31 @@ describe("doctor", () => {
     expect(JSON.stringify(result.findings)).toMatch(/routes/);
   });
 });
+
+describe("what preview says about the policy", () => {
+  test("it does not claim the export has no policy", async () => {
+    // It said exactly that until the export CSP fix landed, and then kept
+    // saying it. The message predated the behaviour it described.
+    const { describePreview } = await import("../src/cli/preview.ts");
+    const message = describePreview(
+      { dir: ROOT, port: 4173, hostname: "localhost", server: undefined as never },
+      ROOT,
+    );
+
+    expect(message).not.toMatch(/no Content-Security-Policy/);
+    expect(message).not.toMatch(/ships without the policy/);
+  });
+
+  test("it says where the policy actually is", async () => {
+    const { describePreview } = await import("../src/cli/preview.ts");
+    const message = describePreview(
+      { dir: ROOT, port: 4173, hostname: "localhost", server: undefined as never },
+      ROOT,
+    );
+
+    expect(message).toMatch(/meta http-equiv/);
+    expect(message).toMatch(/_headers/);
+    // The honest framing: not sent here, but not missing from a real deploy.
+    expect(message).toMatch(/untested rather than absent/);
+  });
+});
