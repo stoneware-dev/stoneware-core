@@ -14,6 +14,9 @@ node_modules/
 .vercel-target-test/
 .cli-commands-test/
 .export-csp-test/
+.no-output-at-all/
+.no-output-either/
+.vercelsim/
 # Vercel's own local artefacts, if the CLI is ever run here.
 .vercel/
 

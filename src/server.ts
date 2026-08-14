@@ -55,6 +55,17 @@ export interface CreateAppOptions {
    */
   routeManifest?: Record<string, string>;
   /**
+   * The island manifest, inlined by a production build.
+   *
+   * Supplied so the server never reads `.stoneware/islands.json` off disk. That
+   * read used a path computed at runtime, which a function bundler tracing
+   * imports cannot follow, so the file was left behind and the server threw at
+   * boot with the bundle otherwise intact.
+   */
+  islandManifest?: IslandManifest;
+  /** Hashed stylesheet URL, inlined by the same build for the same reason. */
+  stylesheet?: string | null;
+  /**
    * Extra markup injected before `</body>` on every HTML page. The dev server
    * uses this for its live-reload client; production never sets it.
    */
@@ -117,6 +128,22 @@ export async function createApp(
       islandRegistry = buildIslandRegistry(await loadIslands(entries));
     }
 
+    // Handed over by the build, so there is no file to lose in transit.
+    //
+    // This is the difference between a bundle that deploys and one that does
+    // not. Reading the manifest from disk means computing its path at runtime,
+    // and a path computed at runtime is invisible to a platform that builds a
+    // function by tracing imports: the bundle arrives, `islands.json` does not,
+    // and the server throws before its first request. Vercel failed exactly
+    // that way.
+    if (!dev && options.islandManifest) {
+      islandManifest = options.islandManifest;
+      staticDir = join(config.outDir, "static");
+      stylesheet = options.stylesheet ?? null;
+      warnIfNothingRegistered(islandManifest, islandRegistry);
+      return;
+    }
+
     // A production build already emitted the chunks and the manifest; rebuilding
     // them at boot would be wasted work and would change hashed filenames.
     const manifestPath = join(config.outDir, ISLAND_MANIFEST_FILE);
@@ -125,26 +152,7 @@ export async function createApp(
         islandManifest = (await Bun.file(manifestPath).json()) as IslandManifest;
         staticDir = join(config.outDir, "static");
 
-        // The manifest names islands the build produced chunks for; the registry
-        // is what lets a render recognise one. If the second is empty while the
-        // first is not, every island on every page renders as inert markup —
-        // correct-looking HTML that ships no JavaScript and never hydrates.
-        //
-        // This shipped once, and the reason it went unnoticed is that an empty
-        // registry is indistinguishable from a page that legitimately has no
-        // islands: no error, no warning, nothing in the network tab. Saying so
-        // out loud costs one comparison at boot.
-        const named = Object.keys(islandManifest).filter((name) => !name.startsWith("@"));
-        if (named.length > 0 && islandRegistry.size === 0) {
-          console.error(
-            `[stoneware] ${named.length} island(s) were built but none are registered, ` +
-              `so none will hydrate.\n` +
-              `  Built: ${named.join(", ")}\n` +
-              `  Pages will render their markup and ship no JavaScript for them. ` +
-              `This means the running server did not receive the island components ` +
-              `the build inlined — check that .stoneware/server.js is what is being run.`,
-          );
-        }
+        warnIfNothingRegistered(islandManifest, islandRegistry);
 
         const stylesRef = Bun.file(join(config.outDir, STYLESHEET_MANIFEST_FILE));
         stylesheet = (await stylesRef.exists()) ? (await stylesRef.text()).trim() || null : null;
@@ -896,4 +904,34 @@ export async function serve(
   });
 
   return { app, server };
+}
+
+/**
+ * Built islands that nothing can hydrate.
+ *
+ * The manifest names islands the build produced chunks for; the registry is what
+ * lets a render recognise one. If the second is empty while the first is not,
+ * every island on every page renders as inert markup - correct-looking HTML
+ * that ships no JavaScript.
+ *
+ * This shipped once, and it went unnoticed because an empty registry is
+ * indistinguishable from a page that legitimately has no islands: no error, no
+ * warning, nothing in the network tab. Saying so out loud costs one comparison
+ * at boot.
+ */
+function warnIfNothingRegistered(
+  manifest: IslandManifest,
+  registry: Map<Component<any>, string>,
+): void {
+  const named = Object.keys(manifest).filter((name) => !name.startsWith("@"));
+  if (named.length === 0 || registry.size > 0) return;
+
+  console.error(
+    `[stoneware] ${named.length} island(s) were built but none are registered, ` +
+      `so none will hydrate.\n` +
+      `  Built: ${named.join(", ")}\n` +
+      `  Pages will render their markup and ship no JavaScript for them. ` +
+      `This means the running server did not receive the island components ` +
+      `the build inlined — check that .stoneware/server.js is what is being run.`,
+  );
 }

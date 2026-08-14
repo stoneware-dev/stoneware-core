@@ -18,7 +18,7 @@
 
 import { mkdir, rm } from "node:fs/promises";
 import { basename, join, relative, resolve } from "node:path";
-import { buildIslands } from "../build.ts";
+import { buildIslands, buildStyles } from "../build.ts";
 import { loadConfigFile, resolveConfig } from "../config.ts";
 import { discoverIslands } from "../islands.ts";
 import { Router } from "../router.ts";
@@ -58,6 +58,14 @@ export async function build(root: string): Promise<BuildResult> {
     )
   ).sort((a, b) => b.bytes - a.bytes);
 
+  // Built here rather than left to the server: the hashed URL has to reach the
+  // bundle as a value, for the same reason the manifest does.
+  const stylesheet = await buildStyles({
+    dirs: [config.routesDir, config.islandsDir, join(config.root, "lib")],
+    outDir: config.outDir,
+    dev: false,
+  });
+
   // --- Server: every route inlined into a single bundle. --------------------
   const router = new Router(config.routesDir);
   await router.init();
@@ -80,6 +88,8 @@ export async function build(root: string): Promise<BuildResult> {
       rootFromOutDir: (relative(config.outDir, root) || ".").replace(/\\/g, "/"),
       routes,
       islandPaths: islands,
+      manifest,
+      stylesheet,
     }),
   );
 
@@ -116,6 +126,10 @@ interface EntrySourceOptions {
   rootFromOutDir: string;
   routes: RouteEntry[];
   islandPaths: { name: string; path: string }[];
+  /** Inlined so the served bundle never reads islands.json off disk. */
+  manifest: Record<string, string>;
+  /** Inlined for the same reason. */
+  stylesheet: string | null;
 }
 
 /**
@@ -173,10 +187,22 @@ function serverEntrySource(options: EntrySourceOptions): string {
     ),
     "]);",
     "",
+    "// Inlined: a path computed at runtime is invisible to a function bundler,",
+    "// so reading these from disk is what left them behind on Vercel.",
+    `const islandManifest = ${JSON.stringify(options.manifest)};`,
+    `const stylesheet = ${JSON.stringify(options.stylesheet)};`,
+    "",
     "const userConfig = await loadConfigFile(root);",
     "const app = await createApp(",
     "  { ...userConfig, root },",
-    "  { dev: false, preloadedRoutes, preloadedIslands, routeManifest },",
+    "  {",
+    "    dev: false,",
+    "    preloadedRoutes,",
+    "    preloadedIslands,",
+    "    routeManifest,",
+    "    islandManifest,",
+    "    stylesheet,",
+    "  },",
     ");",
     "",
     "const server = Bun.serve({",

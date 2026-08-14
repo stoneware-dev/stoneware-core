@@ -188,3 +188,81 @@ describe("the build reports what each island costs", () => {
     expect(names).toContain("Badge");
   });
 });
+
+describe("nothing is read from disk that a bundler cannot see", () => {
+  test("the app starts with no .stoneware/ at all", async () => {
+    // The Vercel failure, reduced. `server.js` statically imports the bundle, so
+    // tracing carries that across - but islands.json and stylesheet.txt were
+    // read through paths computed at runtime, which tracing cannot follow. The
+    // bundle arrived, the manifest did not, and the server threw at boot:
+    //
+    //   Island manifest not found at /var/task/.stoneware/islands.json
+    //
+    // Passing both as values removes the read, so an empty directory is enough.
+    const bare = join(import.meta.dir, "..", ".no-output-at-all");
+    await rm(bare, { recursive: true, force: true });
+    await mkdir(bare, { recursive: true });
+
+    const [index, badge, counter] = await Promise.all([
+      import(join(FIXTURE_ROOT, "routes", "index.tsx")),
+      import(join(FIXTURE_ROOT, "islands", "Badge.tsx")),
+      import(join(FIXTURE_ROOT, "islands", "Counter.tsx")),
+    ]);
+
+    const app = await createApp(
+      { root: bare },
+      {
+        dev: false,
+        routeManifest: { "/": join(bare, "routes", "index.tsx") },
+        preloadedRoutes: new Map([["/", index]]),
+        preloadedIslands: new Map([
+          ["Badge", badge.default],
+          ["Counter", counter.default],
+        ]),
+        islandManifest: {
+          Badge: "/_stoneware/Badge-test.js",
+          Counter: "/_stoneware/Counter-test.js",
+        },
+        stylesheet: "/_stoneware/styles-test.css",
+      },
+    );
+
+    const html = await (await app.fetch(new Request("http://localhost/"))).text();
+
+    expect(html).toContain('data-stoneware-island="Badge"');
+    expect(html).toContain('src="/_stoneware/Counter-test.js"');
+    expect(html).toContain('href="/_stoneware/styles-test.css"');
+
+    await rm(bare, { recursive: true, force: true });
+  });
+
+  test("without the manifest it still fails loudly", async () => {
+    // The inlined value is how a build hands the manifest over, not a way for a
+    // project with no build output to start up serving broken pages.
+    const bare = join(import.meta.dir, "..", ".no-output-either");
+    await rm(bare, { recursive: true, force: true });
+    await mkdir(bare, { recursive: true });
+
+    const index = await import(join(FIXTURE_ROOT, "routes", "index.tsx"));
+
+    expect(
+      createApp(
+        { root: bare },
+        {
+          dev: false,
+          routeManifest: { "/": join(bare, "routes", "index.tsx") },
+          preloadedRoutes: new Map([["/", index]]),
+        },
+      ),
+    ).rejects.toThrow(/Island manifest not found/);
+
+    await rm(bare, { recursive: true, force: true });
+  });
+
+  test("the generated entry carries the manifest as a value", async () => {
+    // If this stops being inlined, the runtime read comes back and the next
+    // serverless deploy fails the same way.
+    expect(bundleText).toContain("islandManifest");
+    expect(bundleText).toMatch(/Counter-[a-z0-9]+\.js/);
+  });
+});
