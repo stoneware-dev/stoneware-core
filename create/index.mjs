@@ -24,7 +24,7 @@ const files = {
         private: true,
         type: "module",
         scripts: { dev: "stoneware dev", build: "stoneware build", start: "stoneware start" },
-        dependencies: { stoneware: "^0.1.4" },
+        dependencies: { stoneware: "^0.1.5" },
         devDependencies: { "@types/bun": "^1.3.0" },
         engines: { bun: ">=1.3.0" },
       },

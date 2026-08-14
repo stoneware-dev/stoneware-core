@@ -73,14 +73,20 @@ function checkBunVersion(): Finding {
 }
 
 /**
- * Versions 0.1.0 through 0.1.3 produce a bundle that only runs on the machine
- * that built it: the project root was baked in as an absolute path and route
- * matching rescanned `routes/` on every request. Nothing fails locally, because
- * locally the build directory and the run directory are the same one - so the
- * symptom is a deploy that starts cleanly and answers 404 for every path.
+ * Two versions of the same mistake, both fatal to a deploy and neither visible
+ * locally - because locally the build directory and the run directory are the
+ * same one.
  *
- * Worth naming here precisely because the failure looks like a routing mistake
- * in the user's own project.
+ * Up to 0.1.3, the bundle baked in its build-time absolute root and rescanned
+ * `routes/` per request, so a copied build answered 404 for every path.
+ *
+ * 0.1.4 fixed that but still read `.stoneware/islands.json` through a path
+ * computed at runtime. A platform that builds a function by tracing imports
+ * cannot see such a path, so the file was left behind and the server threw at
+ * boot - the bundle intact, the manifest missing.
+ *
+ * Worth naming here because both failures look like a mistake in the user's own
+ * project rather than in the framework.
  */
 async function checkFrameworkVersion(): Promise<Finding> {
   try {
@@ -93,9 +99,23 @@ async function checkFrameworkVersion(): Promise<Finding> {
         title: `stoneware ${version} produces builds that only run where they were built`,
         detail:
           "A deploy that copies the build elsewhere - a container, a serverless " +
-          "function, a CI artifact - will start and then 404 every path. Fixed in 0.1.4.",
+          "function, a CI artifact - will start and then 404 every path. " +
+          "Upgrade to 0.1.5.",
       };
     }
+
+    if (compareVersions(version, "0.1.5") < 0) {
+      return {
+        severity: "warn",
+        title: `stoneware ${version} builds a bundle a function bundler cannot carry whole`,
+        detail:
+          "The island manifest is read through a runtime path, so a platform that " +
+          "traces imports leaves it behind and the server throws at boot with " +
+          "'Island manifest not found'. Affects Vercel and anything similar; a VPS " +
+          "or container that ships the directory is unaffected. Upgrade to 0.1.5.",
+      };
+    }
+
     return { severity: "ok", title: `stoneware ${version}` };
   } catch {
     return { severity: "warn", title: "Could not determine the installed Stoneware version" };

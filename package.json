@@ -1,6 +1,6 @@
 {
   "name": "stoneware",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Bun-native, server-first web framework where HTML is the default and JavaScript is opt-in. Islands for interactivity, signals inside islands, security on before you configure anything.",
   "license": "MIT",
   "type": "module",
