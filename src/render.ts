@@ -175,14 +175,108 @@ function renderVNode(vnode: VNode, ctx: Context): string {
   return renderElement(type, props, ctx);
 }
 
-function renderElement(tag: string, props: Props, ctx: Context): string {
+/* -------------------------------------------------------------------------- */
+/* Classification caches                                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Tag and attribute names are a tiny fixed vocabulary, asked about constantly.
+ *
+ * A page is a few thousand elements, drawn from perhaps thirty tag names and
+ * fifty attribute names. Every one of them was being re-derived on every
+ * occurrence: a regex over the name, a `toLowerCase()` allocation, two Set
+ * lookups per element; two regexes, a `startsWith` and an alias lookup per
+ * attribute. Measured on a 58 kB page, that constant work was roughly half the
+ * render - and none of it can change for a given name.
+ *
+ * Bounded, because a name is not guaranteed to come from source. A component
+ * spreading keys derived from request data could otherwise grow these without
+ * limit. Past the cap the answer is still correct, just recomputed.
+ */
+const MAX_CACHED_NAMES = 4096;
+
+// Plain constants rather than a `const enum`: this package ships TypeScript
+// source, and a `const enum` only inlines reliably for a compiler that sees the
+// whole program. Nothing here crosses a module boundary, so the enum bought
+// nothing that a number does not.
+const TAG_INVALID = 0;
+const TAG_NORMAL = 1;
+const TAG_VOID = 2;
+const TAG_RAW_TEXT = 3;
+
+type TagClass = typeof TAG_INVALID | typeof TAG_NORMAL | typeof TAG_VOID | typeof TAG_RAW_TEXT;
+
+const tagClasses = new Map<string, TagClass>();
+
+function classifyTag(tag: string): TagClass {
+  const cached = tagClasses.get(tag);
+  if (cached !== undefined) return cached;
+
+  let computed: TagClass;
   if (!VALID_ATTRIBUTE_NAME.test(tag)) {
+    computed = TAG_INVALID;
+  } else {
+    const lower = tag.toLowerCase();
+    computed = VOID_ELEMENTS.has(lower)
+      ? TAG_VOID
+      : RAW_TEXT_ELEMENTS.has(lower)
+        ? TAG_RAW_TEXT
+        : TAG_NORMAL;
+  }
+
+  if (tagClasses.size < MAX_CACHED_NAMES) tagClasses.set(tag, computed);
+  return computed;
+}
+
+/**
+ * What a prop name resolves to: the attribute to emit, or why it emits nothing.
+ *
+ * Symbols rather than a wrapper object so the cached value needs no allocation
+ * and the common case is a plain string.
+ */
+const SKIP_ATTRIBUTE = null;
+const DIRECTIVE_ATTRIBUTE = Symbol("stoneware.directive");
+const INVALID_ATTRIBUTE = Symbol("stoneware.invalid");
+
+type AttributeClass = string | null | typeof DIRECTIVE_ATTRIBUTE | typeof INVALID_ATTRIBUTE;
+
+const attributeClasses = new Map<string, AttributeClass>();
+
+/**
+ * Order is preserved exactly as it was written out: `children`/`key`/`ref` and
+ * `dangerouslySetInnerHTML` first, then event handlers, then directives, then
+ * validity. An event handler with an otherwise invalid name is still skipped
+ * rather than rejected, because that is what it did before.
+ */
+function computeAttributeClass(name: string): AttributeClass {
+  if (name === "children" || name === "key" || name === "ref") return SKIP_ATTRIBUTE;
+  if (name === "dangerouslySetInnerHTML") return SKIP_ATTRIBUTE;
+  // Event handlers only mean something once an island is hydrated.
+  if (EVENT_HANDLER.test(name)) return SKIP_ATTRIBUTE;
+  if (name.startsWith(DIRECTIVE_PREFIX)) return DIRECTIVE_ATTRIBUTE;
+
+  const attribute = ATTRIBUTE_ALIASES[name] ?? name;
+  return VALID_ATTRIBUTE_NAME.test(attribute) ? attribute : INVALID_ATTRIBUTE;
+}
+
+function classifyAttribute(name: string): AttributeClass {
+  const cached = attributeClasses.get(name);
+  if (cached !== undefined) return cached;
+
+  const computed = computeAttributeClass(name);
+  if (attributeClasses.size < MAX_CACHED_NAMES) attributeClasses.set(name, computed);
+  return computed;
+}
+
+function renderElement(tag: string, props: Props, ctx: Context): string {
+  const tagClass = classifyTag(tag);
+  if (tagClass === TAG_INVALID) {
     throw new Error(`Invalid element name: ${JSON.stringify(tag)}`);
   }
 
   let html = `<${tag}${renderAttributes(props, tag)}>`;
 
-  if (VOID_ELEMENTS.has(tag.toLowerCase())) {
+  if (tagClass === TAG_VOID) {
     // A void element with children is a mistake worth surfacing loudly rather
     // than silently dropping the content.
     if (props.children != null && props.children !== false) {
@@ -194,7 +288,7 @@ function renderElement(tag: string, props: Props, ctx: Context): string {
   const dangerous = props.dangerouslySetInnerHTML as { __html?: string } | undefined;
   if (dangerous != null) {
     html += String(dangerous.__html ?? "");
-  } else if (RAW_TEXT_ELEMENTS.has(tag.toLowerCase())) {
+  } else if (tagClass === TAG_RAW_TEXT) {
     html += renderRawTextContent(tag, props.children as Child);
   } else {
     html += renderChild(props.children as Child, ctx);
@@ -239,26 +333,23 @@ function renderAttributes(props: Props, tag: string): string {
   let out = "";
 
   for (const name in props) {
-    if (name === "children" || name === "key" || name === "ref") continue;
-    if (name === "dangerouslySetInnerHTML") continue;
-    // Event handlers only mean something once an island is hydrated.
-    if (EVENT_HANDLER.test(name)) continue;
+    const classified = classifyAttribute(name);
+    if (classified === SKIP_ATTRIBUTE) continue;
 
-    // A directive here has reached a plain element rather than an island, so
-    // nothing would ever act on it. Silently rendering it as an attribute is
-    // the worst outcome: the page looks correct and never hydrates lazily.
-    if (name.startsWith(DIRECTIVE_PREFIX)) {
-      throw new Error(
-        `<${tag}> has a hydration directive ${JSON.stringify(name)}, but only islands hydrate. ` +
-          `Move the directive to the island component itself.`,
-      );
-    }
-
-    const attribute = ATTRIBUTE_ALIASES[name] ?? name;
-    if (!VALID_ATTRIBUTE_NAME.test(attribute)) {
+    if (typeof classified !== "string") {
+      // A directive here has reached a plain element rather than an island, so
+      // nothing would ever act on it. Silently rendering it as an attribute is
+      // the worst outcome: the page looks correct and never hydrates lazily.
+      if (classified === DIRECTIVE_ATTRIBUTE) {
+        throw new Error(
+          `<${tag}> has a hydration directive ${JSON.stringify(name)}, but only islands hydrate. ` +
+            `Move the directive to the island component itself.`,
+        );
+      }
       throw new Error(`Invalid attribute name ${JSON.stringify(name)} on <${tag}>.`);
     }
 
+    const attribute = classified;
     let value = props[name];
     if (value instanceof Signal) value = value.value;
 

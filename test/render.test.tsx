@@ -119,3 +119,57 @@ describe("escaping", () => {
     expect(() => html(<script>{"var a = '</script>'"}</script>)).toThrow(/would terminate/);
   });
 });
+
+describe("tag and attribute classification is cached", () => {
+  // Tag and attribute names are re-derived nowhere near as often as they are
+  // used, so the answer for each name is remembered. What that buys is speed;
+  // what it risks is a name being answered once and then answered wrongly, or
+  // an error that fires on the first occurrence and not the second.
+
+  test("a rejection repeats, and names the element it happened on", () => {
+    expect(() => html(<div {...{ "client:visible": true }} />)).toThrow(/<div>.*hydration directive/s);
+    // Second time through the cache. An error that only fires on a cold cache
+    // would be worse than no error at all.
+    expect(() => html(<span {...{ "client:visible": true }} />)).toThrow(
+      /<span>.*hydration directive/s,
+    );
+  });
+
+  test("an invalid attribute name is rejected every time, per element", () => {
+    expect(() => html(<div {...{ "bad name": "x" }} />)).toThrow(/Invalid attribute name.*<div>/s);
+    expect(() => html(<p {...{ "bad name": "x" }} />)).toThrow(/Invalid attribute name.*<p>/s);
+  });
+
+  test("the same name resolves the same way on every element", () => {
+    expect(html(<div className="a" />)).toBe(`<div class="a"></div>`);
+    expect(html(<span className="b" />)).toBe(`<span class="b"></span>`);
+    expect(html(<label htmlFor="x" />)).toBe(`<label for="x"></label>`);
+  });
+
+  test("void, raw-text and normal tags stay distinct across renders", () => {
+    for (let pass = 0; pass < 3; pass++) {
+      expect(html(<br />)).toBe(`<br>`);
+      expect(html(<div />)).toBe(`<div></div>`);
+      expect(html(<style>{".a{color:red}"}</style>)).toBe(`<style>.a{color:red}</style>`);
+      expect(() => html(<img src="/a.png">{"x"}</img>)).toThrow(/void element/);
+    }
+  });
+
+  test("names beyond the cache bound are still classified correctly", () => {
+    // The cache is bounded because a name is not guaranteed to come from
+    // source: a component spreading keys derived from request data could grow
+    // it without limit. Past the cap the answer must still be right, just
+    // recomputed - including the ones that have to throw.
+    const many: Record<string, string> = {};
+    for (let i = 0; i < 6000; i++) many[`data-k${i}`] = "v";
+
+    const rendered = html(<div {...many} />);
+    expect(rendered).toContain(`data-k0="v"`);
+    expect(rendered).toContain(`data-k5999="v"`);
+
+    // A name first seen after the cap is full.
+    expect(html(<div {...{ "data-late": "v" }} />)).toBe(`<div data-late="v"></div>`);
+    expect(() => html(<div {...{ "client:idle": true }} />)).toThrow(/hydration directive/);
+    expect(html(<div className="still-aliased" />)).toBe(`<div class="still-aliased"></div>`);
+  });
+});
