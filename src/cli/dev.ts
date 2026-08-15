@@ -42,15 +42,24 @@ const HOT_SENTINEL = "STONEWARE_HOT";
  * sockets are parked on globalThis and cleaned up on the way back in.
  */
 interface DevState {
-  sockets: Set<ServerWebSocket<unknown>>;
+  sockets: Set<ServerWebSocket<undefined>>;
   watchers: FSWatcher[];
   started: boolean;
+  /**
+   * The one server, kept so a re-evaluation can hand it a new handler instead
+   * of binding a second port.
+   */
+  server: Bun.Server<undefined> | null;
+  /** Signal handlers are registered on the process, which survives everything. */
+  signalsBound: boolean;
 }
 
 const state: DevState = ((globalThis as Record<string, unknown>).__stonewareDev ??= {
   sockets: new Set(),
   watchers: [],
   started: false,
+  server: null,
+  signalsBound: false,
 }) as DevState;
 
 /**
@@ -176,14 +185,8 @@ export async function dev(root: string, options: DevOptions = {}): Promise<void>
   // are the ones that need telling about it.
   const sockets = state.sockets;
 
-  const server = await listen({
-    // A busy port in development is nearly always a previous run that has not
-    // exited. Walking to the next one beats refusing to start.
-    allowPortFallback: true,
-    port: app.config.port,
-    hostname: app.config.hostname,
-
-    async fetch(request, server) {
+  const handlers = {
+    async fetch(request: Request, server: Bun.Server<undefined>) {
       const url = new URL(request.url);
 
       if (url.pathname === LIVE_RELOAD_PATH) {
@@ -208,17 +211,48 @@ export async function dev(root: string, options: DevOptions = {}): Promise<void>
     },
 
     websocket: {
-      open(socket) {
+      open(socket: ServerWebSocket<undefined>) {
         sockets.add(socket);
       },
-      close(socket) {
+      close(socket: ServerWebSocket<undefined>) {
         sockets.delete(socket);
       },
       message() {
         // The reload channel is server-to-client only.
       },
     },
-  });
+  };
+
+  /**
+   * One server for the life of the process, handed a new handler on each
+   * re-evaluation.
+   *
+   * Binding again instead was the cause of a whole family of dev-only failures.
+   * `bun --hot` re-evaluates this module when anything it imports changes -
+   * which an edit under `islands/` does, because island modules are imported
+   * through the framework's own graph. A second `Bun.serve` then started on the
+   * next free port while the first stayed bound, so the browser kept talking to
+   * a server built from the *previous* module graph. Values crossing between the
+   * two failed every identity check the renderer makes, and pages 500'd with
+   * errors that pointed at the template rather than at the reload. Each edit
+   * added another stranded server.
+   *
+   * `reload()` swaps the handler in place: same port, same open sockets, one
+   * live module graph.
+   */
+  if (state.server) {
+    state.server.reload(handlers as never);
+  } else {
+    state.server = await listen<undefined>({
+      // A busy port in development is nearly always a previous run that has not
+      // exited. Walking to the next one beats refusing to start.
+      allowPortFallback: true,
+      port: app.config.port,
+      hostname: app.config.hostname,
+      ...handlers,
+    });
+  }
+  const server = state.server;
 
   let pending: ReturnType<typeof setTimeout> | null = null;
 
@@ -291,13 +325,19 @@ export async function dev(root: string, options: DevOptions = {}): Promise<void>
     for (const socket of sockets) socket.send("reload");
   }
 
-  const shutdown = () => {
-    for (const watcher of state.watchers) watcher.close();
-    server.stop();
-    process.exit(0);
-  };
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
+  // Bound once. `process` outlives every re-evaluation, so registering here
+  // each time would add a listener per edit until Node warns about a leak - and
+  // they would close over a `server` that is no longer the live one.
+  if (!state.signalsBound) {
+    state.signalsBound = true;
+    const shutdown = () => {
+      for (const watcher of state.watchers) watcher.close();
+      state.server?.stop();
+      process.exit(0);
+    };
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
+  }
 
   if (isReload) {
     console.log("[stoneware] server modules reloaded");

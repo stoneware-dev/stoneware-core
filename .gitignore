@@ -15,6 +15,7 @@ node_modules/
 .cli-commands-test/
 .export-csp-test/
 .dev-refresh-test/
+.hot-reload-test/
 .no-output-at-all/
 .no-output-either/
 .vercelsim/
