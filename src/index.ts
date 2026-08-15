@@ -9,6 +9,7 @@ export { h, jsx, jsxs, jsxDEV, Fragment } from "./jsx-runtime.ts";
 export { raw, escapeHTML, safeJSONStringify } from "./escape.ts";
 export { renderToString } from "./render.ts";
 export { Form } from "./form.tsx";
+export { Boundary } from "./boundary.tsx";
 export { Image } from "./image.tsx";
 export { seo } from "./seo.tsx";
 export { notFound, isNotFound } from "./not-found.ts";
@@ -24,6 +25,7 @@ export { buildDocument } from "./document.ts";
 export { consoleObserver, formatEvent } from "./observe.ts";
 
 export type { Child, Component, PageComponent, Props, VNode, RawHTML } from "./types.ts";
+export type { BoundaryProps } from "./boundary.tsx";
 export type {
   Observer,
   RequestEvent,

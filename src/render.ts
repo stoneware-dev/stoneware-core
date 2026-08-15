@@ -16,9 +16,12 @@ import {
   VALID_ATTRIBUTE_NAME,
   unsafeURLReason,
 } from "./attributes.ts";
-import { peekRenderContext } from "./context.ts";
+import { noteCaught, peekRenderContext } from "./context.ts";
 import { escapeHTML, safeJSONStringify } from "./escape.ts";
+import { Boundary } from "./boundary.tsx";
+import { isNotFound } from "./not-found.ts";
 import { Fragment, isRaw, isVNode } from "./types.ts";
+import type { BoundaryProps } from "./boundary.tsx";
 import type { Child, Component, Props, VNode } from "./types.ts";
 
 /** Elements that must not be given a closing tag. */
@@ -162,6 +165,10 @@ function renderVNode(vnode: VNode, ctx: Context): string {
   if (type === Fragment) return renderChild(props.children as Child, ctx);
 
   if (typeof type === "function") {
+    // Before the island lookup, because a boundary is the renderer's own and
+    // could never be one.
+    if (type === Boundary) return renderBoundary(props as unknown as BoundaryProps, ctx);
+
     const islandName = ctx.islands.get(type);
     if (islandName !== undefined) return renderIsland(islandName, type, props, ctx);
     // A plain template function: called once, on the server, per request.
@@ -173,6 +180,71 @@ function renderVNode(vnode: VNode, ctx: Context): string {
   }
 
   return renderElement(type, props, ctx);
+}
+
+/**
+ * Render a `<Boundary>`: the children, or the fallback if they throw.
+ *
+ * Two things have to be undone before the fallback renders, and both are the
+ * kind that would go unnoticed.
+ *
+ * A child that registered an island before throwing left an entry in
+ * `ctx.collected`. Its markup is being discarded, so the hydration payload
+ * would name an island with no element on the page - the client would look for
+ * a marker that is not there. Truncating restores the count, and island ids are
+ * positional, so the next island reuses the index rather than colliding.
+ *
+ * The same for `<link rel="preload">` tags contributed from inside the subtree:
+ * a preload for an image that is no longer on the page is a wasted request.
+ *
+ * `notFound()` is deliberately not caught. It is a routing decision travelling
+ * as an exception, and swallowing it would render a fallback with a 200 - a
+ * soft 404, which is the exact bug 0.1.3 removed.
+ */
+function renderBoundary(props: BoundaryProps, ctx: Context): string {
+  const context = peekRenderContext();
+  const islandCount = ctx.collected.length;
+  const preloads = context === null ? null : [...context.preloads];
+
+  try {
+    return renderChild(props.children, ctx);
+  } catch (error) {
+    if (isNotFound(error)) throw error;
+
+    ctx.collected.length = islandCount;
+    if (context !== null && preloads !== null) {
+      context.preloads.clear();
+      for (const tag of preloads) context.preloads.add(tag);
+    }
+
+    reportCaught(error);
+
+    // If the fallback throws too there is nothing sensible left to do, so it
+    // propagates: the route's _500 page handles it, and the stack points at the
+    // fallback rather than at the child that started this.
+    const { fallback } = props;
+    return renderChild(
+      typeof fallback === "function"
+        ? fallback({ error: context?.config.dev === true ? error : undefined })
+        : fallback,
+      ctx,
+    );
+  }
+}
+
+/**
+ * An absorbed error still has to be visible.
+ *
+ * The console, always: with no `observe` hook configured - the production
+ * default - it is the only thing standing between a caught error and complete
+ * silence. A widget that fails on every request is supposed to be noisy.
+ *
+ * And onto the render context, so the request's `observe` event carries it and
+ * a reporting backend gets the thrown value rather than a formatted line.
+ */
+function reportCaught(error: unknown): void {
+  noteCaught(error);
+  console.error("[stoneware] <Boundary> caught an error and rendered its fallback:", error);
 }
 
 /* -------------------------------------------------------------------------- */

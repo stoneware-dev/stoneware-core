@@ -120,6 +120,8 @@ export interface CreateAppOptions {
 interface Trace {
   kind: RequestKind;
   route: string | null;
+  /** Errors a `<Boundary>` absorbed while rendering this request's page. */
+  caught: unknown[];
 }
 
 export async function createApp(
@@ -273,7 +275,7 @@ export async function createApp(
       // Filled in as the request travels: what answered it, and which pattern.
       // "not-found" is the honest starting value - it is what a request gets if
       // nothing downstream claims it.
-      const trace: Trace = { kind: "not-found", route: null };
+      const trace: Trace = { kind: "not-found", route: null, caught: [] };
 
       // Every response leaves through this one point, so a new code path cannot
       // forget the security headers.
@@ -326,6 +328,9 @@ export async function createApp(
           status: response.status,
           durationMs: performance.now() - started,
           error: thrown,
+          // Omitted rather than sent empty, so `event.caught` reads as "a
+          // boundary absorbed something" without a length check at every use.
+          caught: trace.caught.length > 0 ? trace.caught : undefined,
         });
       }
 
@@ -405,7 +410,7 @@ export async function createApp(
 
     return route.kind === "action"
       ? handleAction(route, request, url, locals)
-      : handlePage(route, request, url, locals);
+      : handlePage(route, request, url, locals, trace);
   }
 
   async function handleAction(
@@ -430,6 +435,7 @@ export async function createApp(
     request: Request,
     url: URL,
     locals: Locals,
+    trace: Trace,
   ): Promise<Response> {
     if (request.method !== "GET" && request.method !== "HEAD") {
       return new Response("Method Not Allowed", { status: 405, headers: { Allow: "GET, HEAD" } });
@@ -448,6 +454,7 @@ export async function createApp(
       preloads: new Set<string>(),
       renderingHead: false,
       seoOutsideHead: false,
+      caught: [],
     };
 
     let rendered;
@@ -483,6 +490,11 @@ export async function createApp(
       preloads: [...context.preloads],
       cspMeta: options.embedCSPMeta && config.csp !== false ? config.csp : null,
     });
+
+    // Out to the request event. The response is a 200 carrying a fallback, so
+    // without this the only trace of the failure would be a console line with
+    // nothing tying it to the request that produced it.
+    trace.caught = context.caught;
 
     warnIfSEOStranded(context.seoOutsideHead, rendered.body.html, route.name, dev);
 
@@ -559,6 +571,7 @@ export async function createApp(
           preloads: new Set<string>(),
           renderingHead: false,
           seoOutsideHead: false,
+          caught: [],
         };
         const rendered = await withRenderContext(context, async () => {
           const tree = await component(props);

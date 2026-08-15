@@ -37,6 +37,24 @@ export interface RenderContext {
   renderingHead: boolean;
   /** Set when `seo()` ran outside `head`. Checked once, after the render. */
   seoOutsideHead: boolean;
+  /**
+   * Errors a `<Boundary>` absorbed during this render.
+   *
+   * The response is a 200 with the fallback in it, which is the whole point —
+   * but an absorbed error that nothing can see is just a hidden failure, and
+   * this project has shipped enough of those. The response layer hands these to
+   * the `observe` hook so a reporting backend gets them.
+   */
+  caught: unknown[];
+}
+
+/**
+ * Record an error a `<Boundary>` absorbed.
+ *
+ * A no-op outside a render, so `renderToString` still works standalone.
+ */
+export function noteCaught(error: unknown): void {
+  storage.getStore()?.caught.push(error);
 }
 
 /** Mark the current render as visitor-specific. Safe to call outside a render. */

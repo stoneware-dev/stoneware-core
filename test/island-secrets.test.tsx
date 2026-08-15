@@ -35,6 +35,8 @@ function renderIn(dev: boolean, tree: Parameters<typeof renderToString>[0]): str
         preloads: new Set<string>(),
         renderingHead: false,
         seoOutsideHead: false,
+
+        caught: [],
       },
       () => renderToString(tree, { islands: islands as never }),
     );

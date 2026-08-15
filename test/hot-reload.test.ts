@@ -50,18 +50,35 @@ async function probe(port: number): Promise<Probe> {
   }
 }
 
-/** Poll until `accept` is satisfied, or give up and report what was last seen. */
+/**
+ * Poll until `accept` is satisfied, or give up and report what was last seen.
+ *
+ * `nudge` runs periodically, and exists because this suite runs alongside other
+ * files doing their own `Bun.build`. Under that load Windows' recursive
+ * `fs.watch` will drop an event, and the test would then be measuring watch
+ * reliability rather than the thing it is about - whether the server survives
+ * an island edit. Re-applying the edit cannot mask a regression: if the fix
+ * were reverted the page would answer 500 however many times the file is
+ * touched.
+ */
 async function until(
   label: string,
   accept: (probe: Probe) => boolean,
   timeoutMs: number,
+  nudge?: () => Promise<void>,
 ): Promise<Probe> {
   const deadline = Date.now() + timeoutMs;
+  let nextNudge = Date.now() + 6000;
   let last: Probe = { up: false };
 
   while (Date.now() < deadline) {
     last = await probe(PORT);
     if (accept(last)) return last;
+
+    if (nudge && Date.now() > nextNudge) {
+      nextNudge = Date.now() + 6000;
+      await nudge();
+    }
     await Bun.sleep(250);
   }
 
@@ -122,6 +139,7 @@ describe("editing an island while the dev server runs", () => {
         "the island edit to reach the page",
         (p) => p.up && p.html?.includes("Pressed") === true,
         RELOAD_TIMEOUT_MS,
+        () => writeFile(island, source.replace("Clicked {count} times", "Pressed {count} times")),
       );
 
       // The regression: this used to be 500 on this port forever, because the
@@ -151,6 +169,7 @@ describe("editing an island while the dev server runs", () => {
       "the second island edit to reach the page",
       (p) => p.up && p.html?.includes("Tapped") === true,
       RELOAD_TIMEOUT_MS,
+      () => writeFile(island, source.replace("Pressed {count} times", "Tapped {count} times")),
     );
 
     expect(after.status).toBe(200);

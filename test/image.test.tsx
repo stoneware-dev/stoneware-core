@@ -27,6 +27,8 @@ function inRender<T>(fn: (preloads: Set<string>) => T): T {
       preloads,
       renderingHead: false,
       seoOutsideHead: false,
+
+      caught: [],
     },
     () => fn(preloads),
   );

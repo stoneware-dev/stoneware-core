@@ -67,6 +67,15 @@ export interface RequestEvent {
   durationMs: number;
   /** The thrown value, when `kind` is `"error"`. */
   error?: unknown;
+  /**
+   * Errors a `<Boundary>` absorbed while rendering.
+   *
+   * Present only when there were some. The request still succeeded - status is
+   * 200 and the page carries the fallback - so these would otherwise never
+   * reach a reporting backend, which is the difference between a degraded page
+   * you know about and one you do not.
+   */
+  caught?: unknown[];
 }
 
 /**
@@ -162,8 +171,13 @@ export function formatEvent(event: RequestEvent): string {
   const reason =
     event.error instanceof Error ? `  ${event.error.name}: ${event.error.message}` : "";
 
+  // A 200 that quietly rendered a fallback is worth saying out loud. The errors
+  // themselves are already on the console; this marks the request they belong
+  // to, which is what makes them findable.
+  const caught = event.caught?.length ? `  caught=${event.caught.length}` : "";
+
   return (
     `[stoneware] ${event.status} ${event.method.padEnd(4)} ${event.url.pathname}  ` +
-    `${duration}${pattern}${reason}`
+    `${duration}${pattern}${reason}${caught}`
   );
 }

@@ -25,6 +25,8 @@ function atOrigin<T>(origin: string, fn: () => T): T {
       preloads: new Set<string>(),
       renderingHead: false,
       seoOutsideHead: false,
+
+      caught: [],
     },
     fn,
   );

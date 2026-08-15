@@ -9,6 +9,7 @@ import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { computed, signal } from "@preact/signals-core";
 import { h } from "../src/jsx-runtime.ts";
+import { Boundary } from "../src/boundary.tsx";
 
 // `bun test` runs every file in one process, and registering happy-dom replaces
 // globals including Response and Blob. Left in place, it breaks Bun.file()
@@ -213,5 +214,22 @@ describe("hydration", () => {
     (buttons[1] as HTMLElement).click();
     expect(buttons[0]!.textContent).toBe("Clicked 0 times");
     expect(buttons[1]!.textContent).toBe("Clicked 11 times");
+  });
+});
+
+describe("<Boundary> inside an island", () => {
+  test("renders its children unguarded rather than half-working", () => {
+    // A boundary is a server-render construct: catching depends on rendering
+    // being one synchronous walk to a string, which the client is not. An
+    // island is the one place code runs on both sides, so the documented
+    // behaviour there is "no boundary" rather than one that catches on first
+    // paint and stops catching on every update afterwards.
+    const host = document.createElement("div");
+    const { fragment } = mountTree(
+      h("div", null, h(Boundary, { fallback: h("p", null, "never") }, h("span", null, "child"))),
+    );
+    host.appendChild(fragment);
+
+    expect(host.innerHTML).toBe("<div><span>child</span></div>");
   });
 });
