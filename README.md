@@ -11,7 +11,7 @@ Measured on this repo's own documentation site, in production:
 
 | | |
 |---|---|
-| Whole client runtime (signals + hydrate + DOM) | ~3.2 KB gzipped |
+| Whole client runtime (signals + hydrate + DOM) | ~3.4 KB gzipped |
 | One island (the counter on the home page) | ~0.2 KB gzipped |
 | A page with no islands | **0 bytes, no script tag** |
 | Runtime dependencies | **1** (`@preact/signals-core`) |
