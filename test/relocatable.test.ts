@@ -287,3 +287,39 @@ describe("nothing is read from disk that a bundler cannot see", () => {
     expect(bundleText).toContain("fixture-secret-value-0123456789");
   });
 });
+
+describe("the server bundle is compact but still debuggable", () => {
+  // Two halves of one decision, and asserting only the first would let the
+  // second regress silently.
+  //
+  // Whitespace is stripped because this bundle ships in a container image or a
+  // serverless function and nothing reads it. Identifiers are *not*, because
+  // the moment something throws in production the frame is the whole message:
+  // `at Boom (routes/boom.tsx:3:14)` against `at e8 (routes/boom.tsx:2:22)`.
+  // Measured, not assumed - full minification also constant-folds, which moved
+  // the reported line and rewrote the error text from `value.missingProperty`
+  // to `null.missingProperty`. Source maps recover neither.
+
+  test("no readable module banners survive", () => {
+    // Bun writes `// src/server.ts` between modules only when it is not
+    // stripping whitespace, so this is the marker for the whole setting.
+    expect(bundleText).not.toMatch(/^\/\/ src\//m);
+  });
+
+  test("the output is one long line per chunk, not formatted source", () => {
+    const lines = bundleText.split("\n");
+    expect(bundleText.length / lines.length).toBeGreaterThan(200);
+  });
+
+  test("function names are kept, so a stack trace still names the frame", () => {
+    // If these start failing, minify gained `identifiers: true` and every
+    // production stack trace became single letters.
+    expect(bundleText).toContain("async function createApp");
+    expect(bundleText).toContain("function renderToString");
+  });
+
+  test("a source map is still emitted and linked", async () => {
+    expect(bundleText).toContain("sourceMappingURL");
+    expect(await Bun.file(join(buildDir, ".stoneware", "server.js.map")).exists()).toBe(true);
+  });
+});
