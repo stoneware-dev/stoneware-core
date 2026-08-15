@@ -19,7 +19,7 @@
 import { mkdir, rm } from "node:fs/promises";
 import { basename, join, relative, resolve } from "node:path";
 import { buildIslands, buildStyles } from "../build.ts";
-import { loadConfigFile, resolveConfig } from "../config.ts";
+import { findConfigFile, loadConfigFile, resolveConfig } from "../config.ts";
 import { discoverIslands } from "../islands.ts";
 import { Router } from "../router.ts";
 
@@ -90,6 +90,10 @@ export async function build(root: string): Promise<BuildResult> {
       islandPaths: islands,
       manifest,
       stylesheet,
+      // Imported statically below rather than read at runtime, for the same
+      // reason the manifest is inlined - and because a config value can be a
+      // function (`observe`), which no serialised form would carry.
+      configPath: await findConfigFile(root),
     }),
   );
 
@@ -130,6 +134,8 @@ interface EntrySourceOptions {
   manifest: Record<string, string>;
   /** Inlined for the same reason. */
   stylesheet: string | null;
+  /** Absolute path to `stoneware.config.ts`, or null if the project has none. */
+  configPath: string | null;
 }
 
 /**
@@ -150,9 +156,20 @@ function serverEntrySource(options: EntrySourceOptions): string {
     'import { dirname, resolve } from "node:path";',
     'import { fileURLToPath } from "node:url";',
     `import { createApp } from ${toImport(join(import.meta.dir, "..", "server.ts"))};`,
-    `import { loadConfigFile } from ${toImport(join(import.meta.dir, "..", "config.ts"))};`,
+    `import { readConfigModule } from ${toImport(join(import.meta.dir, "..", "config.ts"))};`,
     "",
   ];
+
+  // A static import, so the bundler inlines the config the same way it inlines
+  // the routes. It used to be loaded at runtime through a path built from the
+  // project root, which is the exact shape a function bundler cannot trace: on
+  // a platform that ships only what it can see imported, the file never
+  // arrived, `loadConfigFile` found nothing, and the app silently ran on
+  // defaults - no csp override, no cors, no trustProxy, no observer. It is also
+  // what lets `observe` be a function at all; nothing serialised could carry one.
+  if (options.configPath !== null) {
+    lines.push(`import * as userConfigModule from ${toImport(options.configPath)};`);
+  }
 
   options.routes.forEach((route, index) => {
     lines.push(`import * as route${index} from ${toImport(route.absolute)};`);
@@ -192,7 +209,11 @@ function serverEntrySource(options: EntrySourceOptions): string {
     `const islandManifest = ${JSON.stringify(options.manifest)};`,
     `const stylesheet = ${JSON.stringify(options.stylesheet)};`,
     "",
-    "const userConfig = await loadConfigFile(root);",
+    options.configPath === null
+      ? "const userConfig = {};"
+      : `const userConfig = readConfigModule(userConfigModule, ${JSON.stringify(
+          basename(options.configPath),
+        )});`,
     "const app = await createApp(",
     "  { ...userConfig, root },",
     "  {",

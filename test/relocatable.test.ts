@@ -265,4 +265,25 @@ describe("nothing is read from disk that a bundler cannot see", () => {
     expect(bundleText).toContain("islandManifest");
     expect(bundleText).toMatch(/Counter-[a-z0-9]+\.js/);
   });
+
+  test("stoneware.config.ts is imported, not loaded from a computed path", async () => {
+    // The third instance of the same mistake, found while adding `observe`.
+    // The config was imported at boot through a path built from the project
+    // root, which import tracing cannot follow - so on a platform that ships
+    // only what it can see imported, the file never arrived. `loadConfigFile`
+    // returns {} for a file that is not there, so nothing failed: the app came
+    // up on defaults, with the project's csp, cors, trustProxy and observer
+    // silently absent.
+    //
+    // A static import also happens to be the only form that can carry
+    // `observe`, since a function survives no serialised representation.
+    const entry = await Bun.file(join(buildDir, ".stoneware", "server-entry.ts")).text();
+    expect(entry).toContain("import * as userConfigModule from");
+    expect(entry).toContain("readConfigModule(userConfigModule");
+
+    // And the values really are in the output: the fixture's config sets this
+    // secret, so its presence means the module was inlined rather than left as
+    // a reference to a file on the build machine.
+    expect(bundleText).toContain("fixture-secret-value-0123456789");
+  });
 });

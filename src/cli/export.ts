@@ -51,7 +51,19 @@ export async function exportSite(root: string, outDirName = "dist"): Promise<Exp
   // The one place this is switched on. A running server sends the policy as a
   // header, which is strictly stronger; static files carry no headers, so an
   // export either embeds what it can or ships with no policy at all.
-  const app = await createApp({ ...userConfig, root }, { dev: false, embedCSPMeta: true });
+  const app = await createApp(
+    {
+      ...userConfig,
+      root,
+      // An export prerenders every page by fetching it through the ordinary
+      // pipeline, but nobody is visiting - these are build-time requests. A
+      // project whose `observe` ships to a metrics backend would otherwise see
+      // a burst of synthetic traffic at every build, dated to the build and
+      // indistinguishable from the real thing.
+      observe: undefined,
+    },
+    { dev: false, embedCSPMeta: true },
+  );
 
   const router = new Router(config.routesDir);
   await router.init();

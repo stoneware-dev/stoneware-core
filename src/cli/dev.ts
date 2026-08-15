@@ -11,6 +11,7 @@ import { watch } from "node:fs";
 import { join, relative } from "node:path";
 import { CLIENT_ASSET_PREFIX } from "../build.ts";
 import { loadConfigFile } from "../config.ts";
+import { consoleObserver } from "../observe.ts";
 import { directoryExists } from "../router.ts";
 import { createApp } from "../server.ts";
 import { listen } from "../listen.ts";
@@ -148,7 +149,16 @@ export async function dev(root: string, options: DevOptions = {}): Promise<void>
 
   const userConfig = await loadConfigFile(root);
   const app = await createApp(
-    { ...userConfig, root },
+    {
+      ...userConfig,
+      root,
+      // A dev server that says nothing while you reload a page you are actively
+      // editing is the wrong default - which route answered, and whether it was
+      // a 200, is the first thing you look for. Production stays silent unless
+      // the project asks, and a project that configured its own observer keeps
+      // it here too.
+      observe: userConfig.observe ?? consoleObserver(),
+    },
     {
       dev: true,
       documentSuffix: `<script type="module" src="${LIVE_RELOAD_SCRIPT}"></script>`,

@@ -25,9 +25,11 @@ import { buildIslandRegistry, discoverIslands, loadIslands } from "./islands.ts"
 import { renderToString } from "./render.ts";
 import { Router } from "./router.ts";
 import { isNotFound } from "./not-found.ts";
+import { notify } from "./observe.ts";
 import type { Locals } from "./middleware.ts";
 import { listen } from "./listen.ts";
 import { requestURL } from "./url.ts";
+import type { RequestKind } from "./observe.ts";
 import type { IslandManifest } from "./build.ts";
 import type { StonewareConfig, ResolvedConfig } from "./config.ts";
 import type { ActionRoute, HTTPMethod, PageRoute } from "./router.ts";
@@ -79,6 +81,18 @@ export interface CreateAppOptions {
    * choice is a partial policy or none.
    */
   embedCSPMeta?: boolean;
+}
+
+/**
+ * What the pipeline learned about a request while answering it.
+ *
+ * Mutable and threaded through by hand rather than carried in async storage:
+ * the pipeline is three functions deep, and a parameter is both cheaper and
+ * easier to follow than a second `AsyncLocalStorage` for two fields.
+ */
+interface Trace {
+  kind: RequestKind;
+  route: string | null;
 }
 
 export async function createApp(
@@ -199,6 +213,18 @@ export async function createApp(
       await rebuildIslands();
     },
     async fetch(request: Request): Promise<Response> {
+      // The public URL, not the internal one. Behind a TLS-terminating proxy the
+      // two differ in scheme, and every absolute URL a page builds comes from
+      // here. Resolved once, at the top, so the observer describes the same URL
+      // the route was handed rather than parsing it a second time.
+      const url = requestURL(request, config.trustProxy);
+
+      const started = performance.now();
+      // Filled in as the request travels: what answered it, and which pattern.
+      // "not-found" is the honest starting value - it is what a request gets if
+      // nothing downstream claims it.
+      const trace: Trace = { kind: "not-found", route: null };
+
       // Every response leaves through this one point, so a new code path cannot
       // forget the security headers.
       //
@@ -206,33 +232,61 @@ export async function createApp(
       // `withSecurityHeaders` fills gaps rather than overwriting, which is what
       // makes a per-route CSP possible. That is a deliberate escape hatch, not
       // an accident: forgetting a header is impossible, replacing one is not.
+      let response: Response;
+      let thrown: unknown;
+
       try {
-        return withCORS(withSecurityHeaders(await handleRequest(request), config), request, config);
+        response = withCORS(
+          withSecurityHeaders(await handleRequest(request, url, trace), config),
+          request,
+          config,
+        );
       } catch (error) {
         // `notFound()` from anywhere the page render did not already catch it -
         // an action handler, or a helper called outside the render. It is a
         // deliberate answer, not a failure, so it is not logged as one.
         if (isNotFound(error)) {
-          return withSecurityHeaders(await renderErrorPage(404, error.message, request), config);
+          trace.kind = "not-found";
+          response = withSecurityHeaders(
+            await renderErrorPage(404, error.message, request),
+            config,
+          );
+        } else {
+          trace.kind = "error";
+          thrown = error;
+          console.error("[stoneware] Unhandled error while serving request:", error);
+          // renderErrorPage never throws, so this catch cannot be re-entered.
+          response = withSecurityHeaders(
+            await renderErrorPage(500, "Internal Server Error", request, error),
+            config,
+          );
         }
-
-        console.error("[stoneware] Unhandled error while serving request:", error);
-        // renderErrorPage never throws, so this catch cannot be re-entered.
-        return withSecurityHeaders(
-          await renderErrorPage(500, "Internal Server Error", request, error),
-          config,
-        );
       }
+
+      // After the response is fully assembled, including the security headers,
+      // so the status reported is the status sent. `notify` swallows whatever
+      // the observer does wrong; nothing here can change the response.
+      if (config.observe !== null) {
+        notify(config.observe, {
+          request,
+          url,
+          method: request.method,
+          kind: trace.kind,
+          route: trace.route,
+          status: response.status,
+          durationMs: performance.now() - started,
+          error: thrown,
+        });
+      }
+
+      return response;
     },
   };
 
-  async function handleRequest(request: Request): Promise<Response> {
-    // The public URL, not the internal one. Behind a TLS-terminating proxy the
-    // two differ in scheme, and every absolute URL a page builds comes from here.
-    const url = requestURL(request, config.trustProxy);
-
+  async function handleRequest(request: Request, url: URL, trace: Trace): Promise<Response> {
     // Built client chunks.
     if (url.pathname.startsWith(`${CLIENT_ASSET_PREFIX}/`)) {
+      trace.kind = "asset";
       return serveStatic(
         staticDir,
         url.pathname.slice(CLIENT_ASSET_PREFIX.length + 1),
@@ -249,7 +303,10 @@ export async function createApp(
       dev,
       config.followSymlinks,
     );
-    if (asset) return asset;
+    if (asset) {
+      trace.kind = "asset";
+      return asset;
+    }
 
     // A preflight is answered before verification, and only ever before it: the
     // browser sends OPTIONS with no body and no token by design, and refuses to
@@ -257,7 +314,10 @@ export async function createApp(
     // server, so there is nothing for CSRF to protect here.
     if (config.cors) {
       const preflight = preflightResponse(request, config.cors);
-      if (preflight) return preflight;
+      if (preflight) {
+        trace.kind = "preflight";
+        return preflight;
+      }
     }
 
     // Every mutating request is verified before anything else observes it -
@@ -265,6 +325,10 @@ export async function createApp(
     // per-route opt-in and nothing a project can put in front of it.
     const csrf = await verifyRequest(request, config);
     if (!csrf.ok) {
+      // Reported apart from an application error on purpose. A rise in these is
+      // a security signal - a stale form, a misconfigured proxy, or someone
+      // trying - and averaging them into the 5xx rate hides all three.
+      trace.kind = "rejected";
       return errorResponse(403, csrf.reason ?? "Forbidden", config, undefined, request);
     }
 
@@ -275,11 +339,19 @@ export async function createApp(
     const middleware = await router.middleware();
     if (middleware) {
       const short = await middleware({ request, url, locals });
-      if (short instanceof Response) return short;
+      if (short instanceof Response) {
+        trace.kind = "middleware";
+        return short;
+      }
     }
 
     const route = await router.match(url);
     if (!route) return renderErrorPage(404, "Not Found", request);
+
+    // The pattern, not the path. `/blog/[slug]` is one row on a dashboard;
+    // `/blog/hello-world` is one row per post.
+    trace.kind = route.kind === "action" ? "action" : "page";
+    trace.route = route.name;
 
     return route.kind === "action"
       ? handleAction(route, request, url, locals)

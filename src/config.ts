@@ -7,6 +7,7 @@
  */
 
 import { resolve } from "node:path";
+import type { Observer } from "./observe.ts";
 
 export interface CSRFConfig {
   /**
@@ -92,6 +93,41 @@ export interface StonewareConfig {
    * at.
    */
   followSymlinks?: boolean;
+
+  /**
+   * Called once per request, with the finished response's status, the matched
+   * route pattern, and how long the whole thing took.
+   *
+   * Nothing is logged per request without this. A server that narrates itself by
+   * default is a server whose logs you turn off, and the useful shape of a
+   * request log is specific to where it is being sent.
+   *
+   * ```ts
+   * import { defineConfig, consoleObserver } from "stoneware";
+   *
+   * export default defineConfig({
+   *   observe: consoleObserver(),
+   * });
+   * ```
+   *
+   * Or hand the event to something else - the signature is deliberately small
+   * enough to adapt in one line:
+   *
+   * ```ts
+   * observe: (event) => {
+   *   metrics.timing("http.request", event.durationMs, {
+   *     route: event.route ?? "unmatched",
+   *     status: String(event.status),
+   *   });
+   *   if (event.error) Sentry.captureException(event.error);
+   * },
+   * ```
+   *
+   * `stoneware dev` installs `consoleObserver()` when this is unset, so
+   * development prints request lines and production stays silent until asked.
+   * Setting it here replaces that in both.
+   */
+  observe?: Observer;
 }
 
 export interface CORSConfig {
@@ -127,6 +163,7 @@ export interface ResolvedConfig {
   trustProxy: boolean | "proto";
   cors: ResolvedCORS | null;
   followSymlinks: boolean;
+  observe: Observer | null;
   dev: boolean;
 }
 
@@ -225,6 +262,7 @@ export function resolveConfig(config: StonewareConfig = {}, dev = false): Resolv
     trustProxy: config.trustProxy ?? parseTrustProxy(Bun.env.STONEWARE_TRUST_PROXY),
     cors: resolveCORS(config.cors),
     followSymlinks: config.followSymlinks ?? false,
+    observe: config.observe ?? null,
     dev,
   };
 }
@@ -257,18 +295,42 @@ function parseTrustProxy(value: string | undefined): boolean | "proto" {
   return value === "1" || value.toLowerCase() === "true";
 }
 
+const CONFIG_FILENAMES = ["stoneware.config.ts", "stoneware.config.js"];
+
+/**
+ * The project's config file, or null if it has none.
+ *
+ * Separate from loading it because the build needs the path without the value:
+ * it writes a static import of this file into the server entry, so the bundler
+ * inlines the module rather than leaving a read behind. See `serverEntrySource`.
+ */
+export async function findConfigFile(root: string): Promise<string | null> {
+  for (const name of CONFIG_FILENAMES) {
+    const path = resolve(root, name);
+    if (await Bun.file(path).exists()) return path;
+  }
+  return null;
+}
+
+/**
+ * Validate whatever a config module exported.
+ *
+ * Shared with the generated server entry, which imports the config statically
+ * and so cannot go through `loadConfigFile` at all.
+ */
+export function readConfigModule(module: Record<string, unknown>, label: string): StonewareConfig {
+  const config = module.default ?? module.config;
+  if (!config || typeof config !== "object") {
+    throw new Error(`${label} must export a config object as its default export.`);
+  }
+  return config as StonewareConfig;
+}
+
 /** Load `stoneware.config.ts` from a project root, if one exists. */
 export async function loadConfigFile(root: string): Promise<StonewareConfig> {
-  for (const name of ["stoneware.config.ts", "stoneware.config.js"]) {
-    const path = resolve(root, name);
-    if (!(await Bun.file(path).exists())) continue;
+  const path = await findConfigFile(root);
+  if (path === null) return {};
 
-    const module = await import(Bun.pathToFileURL(path).href);
-    const config = module.default ?? module.config;
-    if (!config || typeof config !== "object") {
-      throw new Error(`${name} must export a config object as its default export.`);
-    }
-    return config as StonewareConfig;
-  }
-  return {};
+  const module = await import(Bun.pathToFileURL(path).href);
+  return readConfigModule(module, path.split(/[\\/]/).pop() ?? path);
 }

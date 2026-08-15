@@ -21,8 +21,15 @@ export { csrfToken, csrfFieldName } from "./public-csrf.ts";
 export { buildIslands, CLIENT_ASSET_PREFIX } from "./build.ts";
 export { discoverIslands, loadIslands, buildIslandRegistry } from "./islands.ts";
 export { buildDocument } from "./document.ts";
+export { consoleObserver, formatEvent } from "./observe.ts";
 
 export type { Child, Component, PageComponent, Props, VNode, RawHTML } from "./types.ts";
+export type {
+  Observer,
+  RequestEvent,
+  RequestKind,
+  ConsoleObserverOptions,
+} from "./observe.ts";
 export type {
   StonewareConfig,
   ResolvedConfig,
