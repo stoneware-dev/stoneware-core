@@ -14,7 +14,13 @@ import { loadConfigFile } from "../config.ts";
 import { consoleObserver } from "../observe.ts";
 import { directoryExists } from "../router.ts";
 import { createApp } from "../server.ts";
+import type { RefreshOptions } from "../server.ts";
 import { listen } from "../listen.ts";
+
+/** A stylesheet is the one thing under `routes/` that is built rather than imported. */
+function isCSS(file: string): boolean {
+  return file.endsWith(".css");
+}
 import type { FSWatcher } from "node:fs";
 import type { ServerWebSocket } from "bun";
 
@@ -216,12 +222,29 @@ export async function dev(root: string, options: DevOptions = {}): Promise<void>
 
   let pending: ReturnType<typeof setTimeout> | null = null;
 
-  function scheduleReload(reason: string): void {
+  /**
+   * What the changes seen so far actually invalidate.
+   *
+   * Accumulated rather than replaced, because the debounce coalesces a burst:
+   * saving a template and a stylesheet together must still rebuild the
+   * stylesheet, not only whatever arrived last.
+   */
+  let needs: RefreshOptions = {};
+
+  function scheduleReload(reason: string, what: RefreshOptions): void {
+    needs = {
+      routes: needs.routes || what.routes,
+      islands: needs.islands || what.islands,
+      styles: needs.styles || what.styles,
+    };
+
     if (pending) clearTimeout(pending);
     pending = setTimeout(async () => {
       pending = null;
+      const requested = needs;
+      needs = {};
       try {
-        await app.refresh();
+        await app.refresh(requested);
         for (const socket of sockets) socket.send("reload");
         console.log(`[stoneware] rebuilt (${reason})`);
       } catch (error) {
@@ -238,17 +261,29 @@ export async function dev(root: string, options: DevOptions = {}): Promise<void>
 
   // public/ is watched too: editing a stylesheet is as much an edit as editing
   // a template, and without it CSS changes appear only on a manual refresh.
-  const watched = [
-    app.config.routesDir,
-    app.config.islandsDir,
-    app.config.publicDir,
-    join(app.config.root, "lib"),
+  //
+  // What each directory can invalidate is not the same, and treating them alike
+  // is what made every save re-bundle every island:
+  //
+  //   routes/   templates are re-imported by --hot; only a .css here is built
+  //   islands/  source is bundled into client chunks, so a change rebuilds them
+  //   lib/      imported by islands, so bundled into them too
+  //   public/   served as-is and never built - reload the browser, nothing more
+  const watched: { dir: string; invalidates: (file: string) => RefreshOptions }[] = [
+    { dir: app.config.routesDir, invalidates: (file) => ({ routes: true, styles: isCSS(file) }) },
+    { dir: app.config.islandsDir, invalidates: () => ({ islands: true }) },
+    { dir: join(app.config.root, "lib"), invalidates: () => ({ islands: true }) },
+    { dir: app.config.publicDir, invalidates: () => ({}) },
   ];
-  state.watchers = watched.filter(directoryExists).map((dir) =>
-    watch(dir, { recursive: true }, (_event, filename) => {
-      scheduleReload(filename ? String(filename) : dir);
-    }),
-  );
+
+  state.watchers = watched
+    .filter((entry) => directoryExists(entry.dir))
+    .map((entry) =>
+      watch(entry.dir, { recursive: true }, (_event, filename) => {
+        const file = filename ? String(filename) : "";
+        scheduleReload(file || entry.dir, entry.invalidates(file));
+      }),
+    );
 
   // Server modules were just re-evaluated with the new code, so the browser is
   // now the only stale copy.

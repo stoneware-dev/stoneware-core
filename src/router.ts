@@ -14,7 +14,7 @@
 import { existsSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { compileRoutes, matchRoute } from "./route-table.ts";
-import type { CompiledRoute } from "./route-table.ts";
+import type { RouteIndex } from "./route-table.ts";
 import type { Middleware, Locals } from "./middleware.ts";
 import type { Child, Component, PageComponent } from "./types.ts";
 
@@ -127,7 +127,7 @@ export interface RouterOptions {
 export class Router {
   readonly routesDir: string;
   #table: Record<string, string> | null = null;
-  #compiled: CompiledRoute[] = [];
+  #index: RouteIndex = { literals: new Map(), dynamic: [], all: [] };
   #dev: boolean;
   #preloaded: Map<string, Record<string, unknown>>;
   #manifest: Record<string, string> | undefined;
@@ -169,7 +169,7 @@ export class Router {
 
   #setTable(table: Record<string, string>): void {
     this.#table = table;
-    this.#compiled = compileRoutes(table);
+    this.#index = compileRoutes(table);
   }
 
   async match(url: URL | string): Promise<MatchedRoute | null> {
@@ -179,7 +179,7 @@ export class Router {
 
     const pathname = typeof url === "string" ? url : url.pathname;
 
-    const matched = matchRoute(this.#compiled, pathname);
+    const matched = matchRoute(this.#index, pathname);
     if (!matched) return null;
     if (isReservedRoute(matched.pattern)) return null;
 

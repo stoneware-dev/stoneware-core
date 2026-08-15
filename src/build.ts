@@ -160,12 +160,16 @@ export async function buildIslands(options: BuildIslandsOptions): Promise<BuildI
   const entrypoints: string[] = [];
   const entryToIsland = new Map<string, IslandEntry>();
 
-  for (const island of options.islands) {
-    const entryPath = join(entriesDir, `${island.chunkName}.ts`);
-    await Bun.write(entryPath, entrySource(island));
-    entrypoints.push(entryPath);
-    entryToIsland.set(island.chunkName, island);
-  }
+  // Written together rather than one after another: these are independent
+  // files, and the dev server rebuilds them on every island edit.
+  await Promise.all(
+    options.islands.map((island) => {
+      const entryPath = join(entriesDir, `${island.chunkName}.ts`);
+      entrypoints.push(entryPath);
+      entryToIsland.set(island.chunkName, island);
+      return Bun.write(entryPath, entrySource(island));
+    }),
+  );
 
   // Built unconditionally, referenced only by pages that have a lazy island.
   // Deciding here would mean rebuilding whenever a page changed its directives;

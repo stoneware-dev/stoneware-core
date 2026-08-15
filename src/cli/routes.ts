@@ -42,7 +42,7 @@ export async function listRoutes(root: string): Promise<RoutesResult> {
 
   // Compiled, not the raw table: this is the order requests are actually tried
   // in, which is the question the command exists to answer.
-  const compiled = compileRoutes(router.routes);
+  const compiled = compileRoutes(router.routes).all;
 
   const rows: RouteRow[] = [];
   for (const route of compiled) {

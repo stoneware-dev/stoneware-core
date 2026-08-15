@@ -6,6 +6,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { compileRoutes, matchRoute } from "../src/route-table.ts";
 import { join } from "node:path";
 import { Router } from "../src/router.ts";
 
@@ -103,5 +104,77 @@ describe("classification", () => {
     const match = await (await router()).match("/plain");
     expect(match?.kind).toBe("page");
     expect(typeof (match as { component: unknown }).component).toBe("function");
+  });
+});
+
+describe("route precedence and the literal index", () => {
+  // Literal patterns are held in a map and tried before the dynamic scan, which
+  // is what keeps matching flat as a project grows. That is only sound because
+  // a literal already outranks a dynamic route wherever both could match - so
+  // these assert the precedence rather than the data structure.
+  const index = () =>
+    compileRoutes({
+      "/": "index.tsx",
+      "/blog": "blog.tsx",
+      "/blog/new": "new.tsx",
+      "/blog/[slug]": "slug.tsx",
+      "/shop/[category]/[item]": "item.tsx",
+      "/shop/sale/[item]": "sale.tsx",
+      "/files/[...path]": "files.tsx",
+      "/[...catchall]": "catchall.tsx",
+    });
+
+  const match = (path: string) => matchRoute(index(), path);
+
+  test("a literal beats a dynamic route that also matches", () => {
+    expect(match("/blog/new")?.pattern).toBe("/blog/new");
+    expect(match("/blog/other")?.pattern).toBe("/blog/[slug]");
+  });
+
+  test("a literal beats a catch-all that also matches", () => {
+    expect(match("/blog")?.pattern).toBe("/blog");
+    expect(match("/")?.pattern).toBe("/");
+    expect(match("/unknown")?.pattern).toBe("/[...catchall]");
+  });
+
+  test("a literal segment beats a param at the same position", () => {
+    expect(match("/shop/sale/hammer")?.pattern).toBe("/shop/sale/[item]");
+    expect(match("/shop/tools/hammer")?.pattern).toBe("/shop/[category]/[item]");
+  });
+
+  test("a literal match carries no params, and its own object", () => {
+    const first = match("/blog/new");
+    const second = match("/blog/new");
+    expect(first?.params).toEqual({});
+    // Not a shared singleton: a caller that writes to params must not be able
+    // to affect the next request.
+    expect(first?.params).not.toBe(second?.params);
+  });
+
+  test("params are still extracted when nothing captures until late", () => {
+    expect(match("/shop/tools/hammer")?.params).toEqual({ category: "tools", item: "hammer" });
+    expect(match("/files/a/b/c.png")?.params).toEqual({ path: "a/b/c.png" });
+  });
+
+  test("segment count still decides a non-catch-all route", () => {
+    // The length pre-check rejects most candidates before the walk; it must not
+    // reject one that genuinely matches, nor accept a shorter or longer path.
+    expect(match("/shop/tools")?.pattern).toBe("/[...catchall]");
+    expect(match("/shop/tools/hammer/extra")?.pattern).toBe("/[...catchall]");
+  });
+
+  test("every route is still listed in match order", () => {
+    // `stoneware routes` reads this, and it is only useful if it is the order
+    // requests are actually tried in.
+    const patterns = index().all.map((route) => route.pattern);
+    expect(patterns.indexOf("/blog/new")).toBeLessThan(patterns.indexOf("/blog/[slug]"));
+    expect(patterns.indexOf("/shop/sale/[item]")).toBeLessThan(
+      patterns.indexOf("/shop/[category]/[item]"),
+    );
+    expect(patterns.indexOf("/blog")).toBeLessThan(patterns.indexOf("/[...catchall]"));
+    // "/" is last, and harmlessly so: zero segments loses the longer-first
+    // tiebreak, and it is the only pattern that can match the empty path.
+    expect(patterns.at(-1)).toBe("/");
+    expect(patterns).toHaveLength(8);
   });
 });

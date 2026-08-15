@@ -41,8 +41,35 @@ export interface StonewareApp {
   islandManifest: IslandManifest;
   /** Handle one request. Usable directly in tests without opening a port. */
   fetch(request: Request): Promise<Response>;
-  /** Rebuild islands and re-scan routes. Used by the dev watcher. */
-  refresh(): Promise<void>;
+  /**
+   * Pick up changes on disk. Used by the dev watcher.
+   *
+   * With no argument everything is redone, which is what a caller with no idea
+   * what changed should get. The watcher does know, and passes it on.
+   */
+  refresh(what?: RefreshOptions): Promise<void>;
+}
+
+/**
+ * Which parts of a dev rebuild are actually needed.
+ *
+ * Every one of these was being done on every file change, so editing a template
+ * re-bundled every island and re-emitted the stylesheet - work that cannot have
+ * been invalidated by the edit. On a two-island fixture that was ~53ms added to
+ * each save, and it grows with the number of islands.
+ */
+export interface RefreshOptions {
+  /** Re-scan `routes/` for files added or removed. */
+  routes?: boolean;
+  /** Reload island modules and rebuild their client chunks. */
+  islands?: boolean;
+  /**
+   * Rebuild the stylesheet.
+   *
+   * Implied by `islands`, and not optional when it is set: building the island
+   * chunks clears the static directory, taking the stylesheet with it.
+   */
+  styles?: boolean;
 }
 
 export interface CreateAppOptions {
@@ -193,6 +220,10 @@ export async function createApp(
 
     // After the islands, never before: buildIslands clears the static directory,
     // which would take the stylesheet with it.
+    await rebuildStyles();
+  }
+
+  async function rebuildStyles(): Promise<void> {
     stylesheet = await buildStyles({
       dirs: [config.routesDir, config.islandsDir, join(config.root, "lib")],
       outDir: config.outDir,
@@ -208,9 +239,23 @@ export async function createApp(
     get islandManifest() {
       return islandManifest;
     },
-    async refresh() {
-      router.reload();
-      await rebuildIslands();
+    async refresh(what?: RefreshOptions) {
+      // No argument means "something changed and I do not know what", so
+      // everything is redone. An argument - even a partial one - is a claim
+      // about what changed, and anything it does not name is left alone. The
+      // two must not be conflated: defaulting each missing field to true would
+      // make `{ routes: true }` rebuild the islands as well, which is exactly
+      // the behaviour this exists to avoid.
+      const everything = what === undefined;
+      const routes = everything || what.routes === true;
+      const islands = everything || what.islands === true;
+      // Never independent of `islands`: rebuilding the chunks clears the static
+      // directory, so a skipped stylesheet would simply be gone.
+      const styles = islands || what?.styles === true;
+
+      if (routes) router.reload();
+      if (islands) await rebuildIslands();
+      else if (styles) await rebuildStyles();
     },
     async fetch(request: Request): Promise<Response> {
       // The public URL, not the internal one. Behind a TLS-terminating proxy the
