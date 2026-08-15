@@ -8,7 +8,7 @@
  */
 
 import { join, resolve, sep } from "node:path";
-import { realpathSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import {
   CLIENT_ASSET_PREFIX,
   ISLAND_MANIFEST_FILE,
@@ -219,7 +219,12 @@ export async function createApp(
       // the route was handed rather than parsing it a second time.
       const url = requestURL(request, config.trustProxy);
 
-      const started = performance.now();
+      // Read once: nothing reassigns it, and it decides whether this request
+      // pays for timing at all. With no observer configured there is nobody to
+      // report a duration to, so the clock is never read.
+      const observer = config.observe;
+      const started = observer === null ? 0 : performance.now();
+
       // Filled in as the request travels: what answered it, and which pattern.
       // "not-found" is the honest starting value - it is what a request gets if
       // nothing downstream claims it.
@@ -266,8 +271,8 @@ export async function createApp(
       // After the response is fully assembled, including the security headers,
       // so the status reported is the status sent. `notify` swallows whatever
       // the observer does wrong; nothing here can change the response.
-      if (config.observe !== null) {
-        notify(config.observe, {
+      if (observer !== null) {
+        notify(observer, {
           request,
           url,
           method: request.method,
@@ -615,6 +620,38 @@ function isHiddenPath(decoded: string): boolean {
 }
 
 /**
+ * The resolved form of a served root, remembered for the process.
+ *
+ * The root may itself sit behind a link - a project under a symlinked home
+ * directory, say - so both sides of the comparison have to be resolved or every
+ * path looks like an escape. Resolving the root is the half that cannot change
+ * between requests, and it was being repeated on every one.
+ *
+ * Caching it adds no assumption the framework did not already make: `publicDir`
+ * and `outDir` are resolved once, at `createApp`, and held in `ResolvedConfig`
+ * for the life of the process. A deploy that swaps what those paths point at
+ * replaces the process along with them.
+ */
+const resolvedRoots = new Map<string, string>();
+
+function realRootOf(root: string): string | null {
+  const cached = resolvedRoots.get(root);
+  if (cached !== undefined) return cached;
+
+  try {
+    const real = realpathSync(root);
+    // Only a success is remembered. Caching the failure would be permanent, and
+    // a root that does not resolve yet is a state a dev server can leave - a
+    // project that has not created public/ at the moment of the first request.
+    // Nothing is gained by making that stick.
+    resolvedRoots.set(root, real);
+    return real;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Is the file this path opens still inside the root?
  *
  * `safeJoin` answers that lexically, which is not the same question. A symlink
@@ -628,14 +665,12 @@ function isHiddenPath(decoded: string): boolean {
  * that the same as a miss.
  */
 function resolvesInsideRoot(root: string, target: string): boolean {
+  const realRoot = realRootOf(root);
+  if (realRoot === null) return false;
+
   let real: string;
-  let realRoot: string;
   try {
     real = realpathSync(target);
-    // The root may itself sit behind a link - a project under a symlinked home
-    // directory, say - so both sides have to be resolved or every path looks
-    // like an escape.
-    realRoot = realpathSync(root);
   } catch {
     return false;
   }
@@ -665,7 +700,16 @@ export function safeJoin(
 
   // The lexical check above is not enough on its own: it reasons about the
   // path, and the filesystem reasons about the link.
-  if (!followSymlinks && !resolvesInsideRoot(root, target)) return null;
+  if (!followSymlinks) {
+    // Existence first, and only then the link check. A path that resolves to
+    // nothing cannot escape anywhere, so the answer is the same either way -
+    // but `realpathSync` reports a missing file by throwing, and building an
+    // exception is not free. Every request that is on its way to the router
+    // passes through here and matches no file, which made that throw one of
+    // the few unconditional costs on the page path.
+    if (!existsSync(target)) return null;
+    if (!resolvesInsideRoot(root, target)) return null;
+  }
 
   return target;
 }

@@ -9,7 +9,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createApp } from "../src/server.ts";
+import { createApp, safeJoin } from "../src/server.ts";
 import type { StonewareApp } from "../src/server.ts";
 
 const FIXTURE_ROOT = join(import.meta.dir, "fixture");
@@ -167,5 +167,46 @@ describe("symbolic links out of public/", () => {
     } finally {
       if (made) rmSync(LINK, { recursive: true, force: true });
     }
+  });
+});
+
+describe("the resolved-root cache", () => {
+  // Resolving the root is the half of the containment check that cannot change
+  // between requests, so it is remembered for the process. The risk that
+  // introduces is a shared cache answering for the wrong root, which would let
+  // a file under one served directory satisfy a check against another.
+  test("two roots do not answer for each other", () => {
+    const insidePublic = safeJoin(PUBLIC, "/styles.css");
+    expect(insidePublic).not.toBeNull();
+
+    // Same file, checked against a different root that does not contain it.
+    const otherRoot = join(import.meta.dir, "fixture-mw");
+    expect(safeJoin(otherRoot, "/styles.css")).toBeNull();
+
+    // And the first root still answers correctly afterwards, so the second
+    // lookup did not overwrite it.
+    expect(safeJoin(PUBLIC, "/styles.css")).toBe(insidePublic);
+  });
+
+  test("a root that does not resolve is not remembered as unresolvable", () => {
+    // Only successes are cached. A dev server can be asked for a file before
+    // public/ exists, and caching that failure would make it permanent.
+    const missingRoot = join(import.meta.dir, "fixture", "no-such-directory");
+    expect(safeJoin(missingRoot, "/anything.css")).toBeNull();
+
+    mkdirSync(missingRoot, { recursive: true });
+    writeFileSync(join(missingRoot, "anything.css"), "a{}\n");
+    try {
+      expect(safeJoin(missingRoot, "/anything.css")).not.toBeNull();
+    } finally {
+      rmSync(missingRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("a path that does not exist is still a miss, not a pass", () => {
+    // The contract did not change when the existence check moved ahead of the
+    // link check: an absent file resolved to null before, and must still.
+    expect(safeJoin(PUBLIC, "/no-such-file.css")).toBeNull();
+    expect(safeJoin(PUBLIC, "/../../src/csrf.ts")).toBeNull();
   });
 });
