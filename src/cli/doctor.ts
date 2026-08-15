@@ -73,7 +73,7 @@ function checkBunVersion(): Finding {
 }
 
 /**
- * Two versions of the same mistake, both fatal to a deploy and neither visible
+ * Three versions of one mistake, each fatal to a deploy and none visible
  * locally - because locally the build directory and the run directory are the
  * same one.
  *
@@ -85,8 +85,12 @@ function checkBunVersion(): Finding {
  * cannot see such a path, so the file was left behind and the server threw at
  * boot - the bundle intact, the manifest missing.
  *
- * Worth naming here because both failures look like a mistake in the user's own
- * project rather than in the framework.
+ * 0.1.5 fixed that and left `stoneware.config.ts` being imported the same way.
+ * That one fails worse than either, because nothing throws: a config file that
+ * did not arrive is indistinguishable from a project that has none.
+ *
+ * Worth naming here because every one of them looks like a mistake in the
+ * user's own project rather than in the framework.
  */
 async function checkFrameworkVersion(): Promise<Finding> {
   try {
@@ -100,7 +104,7 @@ async function checkFrameworkVersion(): Promise<Finding> {
         detail:
           "A deploy that copies the build elsewhere - a container, a serverless " +
           "function, a CI artifact - will start and then 404 every path. " +
-          "Upgrade to 0.1.5.",
+          "Upgrade to 0.1.6.",
       };
     }
 
@@ -112,7 +116,20 @@ async function checkFrameworkVersion(): Promise<Finding> {
           "The island manifest is read through a runtime path, so a platform that " +
           "traces imports leaves it behind and the server throws at boot with " +
           "'Island manifest not found'. Affects Vercel and anything similar; a VPS " +
-          "or container that ships the directory is unaffected. Upgrade to 0.1.5.",
+          "or container that ships the directory is unaffected. Upgrade to 0.1.6.",
+      };
+    }
+
+    if (compareVersions(version, "0.1.6") < 0) {
+      return {
+        severity: "warn",
+        title: `stoneware ${version} can lose your stoneware.config.ts at runtime`,
+        detail:
+          "The built server imports the config through a runtime path, which import " +
+          "tracing cannot follow. Where the file does not arrive nothing throws - the " +
+          "app comes up on defaults, with your csp, cors and trustProxy silently " +
+          "absent - or refuses to start if the config is where your CSRF secret comes " +
+          "from. Affects Vercel and anything similar. Upgrade to 0.1.6.",
       };
     }
 
