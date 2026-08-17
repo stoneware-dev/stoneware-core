@@ -1,6 +1,6 @@
 {
   "name": "create-stoneware",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Scaffold a new Stoneware project. Runs on plain Node, so it works before Bun is installed.",
   "license": "MIT",
   "type": "module",
