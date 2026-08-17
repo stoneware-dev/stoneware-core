@@ -132,6 +132,10 @@ Bun >= 1.3.0. The framework is built on `Bun.serve`, `Bun.build`, `Bun.escapeHTM
 
 ## Contributing
 
+How the framework is put together — the request pipeline, the render model, and
+the reasoning behind the parts that are easy to undo by accident — is in
+[ARCHITECTURE.md](ARCHITECTURE.md).
+
 The documentation site lives in its own repository,
 [stoneware-docs](https://github.com/stoneware-dev/stoneware-docs). It consumes `stoneware`
 from npm exactly as any other project does, so it cannot quietly depend on unreleased behaviour.
