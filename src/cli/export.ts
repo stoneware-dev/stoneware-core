@@ -10,7 +10,7 @@
 
 import { cp, mkdir, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, extname, join, resolve } from "node:path";
 import { buildIslands, buildStyles } from "../build.ts";
 import { SECURITY_HEADERS, loadConfigFile, resolveConfig } from "../config.ts";
 import { discoverIslands } from "../islands.ts";
@@ -25,6 +25,103 @@ export interface ExportResult {
   csp: string | false;
   /** Directives that only a real header can carry, so a meta tag drops them. */
   headerOnly: string[];
+  /** Links in the exported pages that resolve to nothing in the output. */
+  dangling: DanglingLink[];
+}
+
+export interface DanglingLink {
+  /** The exported page holding the link, as a URL path. */
+  from: string;
+  /** The href or src that resolves to nothing. */
+  to: string;
+}
+
+/**
+ * Links in the exported output that point at files the export did not write.
+ *
+ * The export already reports which routes it skipped, and that line is easy to
+ * read past: it is one line among several, it looks informational, and the
+ * command exits 0. So a site ships whose own navigation links to pages that
+ * were never written, every one of them 404s, and the first anyone hears of it
+ * is a visitor - or a deploy that looks perfect except for one section.
+ *
+ * The information to prevent that is already here. The pages have been written
+ * and their links can be resolved against the very directory about to be
+ * uploaded, so the check is a scan of the output rather than an analysis of the
+ * project. Anything unresolvable is reported by name.
+ *
+ * Resolution mirrors the conventions a static host uses, which is also what
+ * `stoneware preview` implements: `<path>/index.html` for a page, the literal
+ * path for a file, and `<path>.html` for hosts that serve it.
+ */
+async function findDanglingLinks(outDir: string, pages: string[]): Promise<DanglingLink[]> {
+  const dangling: DanglingLink[] = [];
+  const resolved = new Map<string, boolean>();
+
+  for (const page of pages) {
+    const file = pageFile(outDir, page);
+    if (!existsSync(file)) continue;
+
+    const html = await Bun.file(file).text();
+    for (const target of internalTargets(html)) {
+      let ok = resolved.get(target);
+      if (ok === undefined) {
+        ok = await targetExists(outDir, target);
+        resolved.set(target, ok);
+      }
+      if (!ok) dangling.push({ from: page, to: target });
+    }
+  }
+
+  return dangling;
+}
+
+/** Where a given URL path was written. */
+function pageFile(outDir: string, url: string): string {
+  return url === "/" ? join(outDir, "index.html") : join(outDir, url.replace(/^\//, ""), "index.html");
+}
+
+/**
+ * Every same-origin href and src on the page.
+ *
+ * `src` as well as `href` because a missing stylesheet or island chunk is the
+ * same class of failure as a missing page, and the one that presents as "the
+ * CSS is broken" rather than as a missing file.
+ */
+function internalTargets(html: string): Set<string> {
+  const targets = new Set<string>();
+
+  for (const match of html.matchAll(/(?:href|src)="([^"]*)"/g)) {
+    const raw = match[1]!;
+
+    // Only site-absolute paths. An external origin is not ours to verify, and
+    // a relative link would need the containing page's directory to resolve -
+    // the framework's own helpers all emit absolute paths.
+    if (!raw.startsWith("/") || raw.startsWith("//")) continue;
+
+    // Drop the query and fragment: a static host serves the same file either
+    // way, and `/about?utm=x` must not be reported as missing.
+    const path = raw.split(/[?#]/)[0]!;
+    if (path === "") continue;
+
+    targets.add(path);
+  }
+
+  return targets;
+}
+
+async function targetExists(outDir: string, target: string): Promise<boolean> {
+  const relative = decodeURIComponent(target).replace(/^\//, "");
+
+  const candidates =
+    target.endsWith("/") || extname(target) === ""
+      ? [join(outDir, relative, "index.html"), join(outDir, `${relative.replace(/\/$/, "")}.html`)]
+      : [join(outDir, relative)];
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return true;
+  }
+  return false;
 }
 
 /**
@@ -73,6 +170,8 @@ export async function exportSite(root: string, outDirName = "dist"): Promise<Exp
   await mkdir(outDir, { recursive: true });
 
   const skipped: string[] = [];
+  /** URL paths of the HTML pages written, for the link check at the end. */
+  const written: string[] = [];
   let pages = 0;
 
   for (const [pattern, filePath] of Object.entries(router.routes)) {
@@ -120,6 +219,7 @@ export async function exportSite(root: string, outDirName = "dist"): Promise<Exp
       }
 
       await writePage(outDir, url, html);
+      written.push(url);
       pages++;
     }
   }
@@ -144,7 +244,12 @@ export async function exportSite(root: string, outDirName = "dist"): Promise<Exp
 
   const headerOnly = await writeHostHeaders(outDir, config.csp);
 
-  return { outDir, pages, skipped, csp: config.csp, headerOnly };
+  // Last, deliberately: public/ and the client chunks have been copied in by
+  // now, so a link to an image or a stylesheet resolves against what will
+  // actually be uploaded rather than against a half-populated directory.
+  const dangling = await findDanglingLinks(outDir, written);
+
+  return { outDir, pages, skipped, csp: config.csp, headerOnly, dangling };
 }
 
 async function expand(

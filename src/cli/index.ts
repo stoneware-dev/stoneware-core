@@ -29,6 +29,7 @@ Options
   --target <t>     Deployment target for \`build\`: node (default) or vercel
   -h, --help       Show this message
       --open       Open a browser when the dev server starts
+      --strict     Fail the export if any route was skipped or any link dangles
   -v, --version    Print the Stoneware and Bun versions
 `;
 
@@ -44,6 +45,7 @@ interface Args {
   help: boolean;
   version: boolean;
   open: boolean;
+  strict: boolean;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -56,6 +58,7 @@ function parseArgs(argv: string[]): Args {
     help: false,
     version: false,
     open: false,
+    strict: false,
   };
 
   for (let index = 0; index < argv.length; index++) {
@@ -63,6 +66,7 @@ function parseArgs(argv: string[]): Args {
     if (arg === "-h" || arg === "--help") args.help = true;
     else if (arg === "-v" || arg === "--version") args.version = true;
     else if (arg === "--open") args.open = true;
+    else if (arg === "--strict") args.strict = true;
     else if (arg === "--root") args.root = resolve(argv[++index] ?? ".");
     else if (arg === "--port") args.port = argv[++index];
     else if (arg === "--out") args.out = argv[++index];
@@ -129,6 +133,34 @@ async function main(): Promise<void> {
               `           _headers covers Netlify and Cloudflare Pages, other hosts need config`,
           );
         }
+      }
+
+      // After the CSP lines rather than buried among the skipped ones: a
+      // dangling link is the consequence a skipped route produces, and it is
+      // the thing that will actually be seen as a 404 on the deployed site.
+      if (result.dangling.length > 0) {
+        console.warn(`\n[stoneware] ${result.dangling.length} link(s) point at pages this export did not write:`);
+        for (const link of result.dangling.slice(0, 20)) {
+          console.warn(`  ${link.from.padEnd(28)} -> ${link.to}`);
+        }
+        if (result.dangling.length > 20) {
+          console.warn(`  ... and ${result.dangling.length - 20} more`);
+        }
+        console.warn(
+          `  Each of these will 404 on the deployed site. A dynamic route needs a\n` +
+            `  staticPaths() export before it can be prerendered - see the skipped list above.`,
+        );
+      }
+
+      // Exits non-zero so CI can refuse an incomplete export. Not the default:
+      // a project may legitimately prerender some routes and serve others, and
+      // failing that build would be wrong.
+      if (args.strict && (result.dangling.length > 0 || result.skipped.length > 0)) {
+        console.error(
+          `\n[stoneware] --strict: the export is incomplete ` +
+            `(${result.skipped.length} route(s) skipped, ${result.dangling.length} dangling link(s)).`,
+        );
+        process.exit(1);
       }
       break;
     }
