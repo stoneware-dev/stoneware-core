@@ -73,7 +73,7 @@ function checkBunVersion(): Finding {
 }
 
 /**
- * Three versions of one mistake, each fatal to a deploy and none visible
+ * Four versions of one mistake, each fatal to a deploy and none visible
  * locally - because locally the build directory and the run directory are the
  * same one.
  *
@@ -88,6 +88,11 @@ function checkBunVersion(): Finding {
  * 0.1.5 fixed that and left `stoneware.config.ts` being imported the same way.
  * That one fails worse than either, because nothing throws: a config file that
  * did not arrive is indistinguishable from a project that has none.
+ *
+ * 0.1.6 fixed that and left the client chunks themselves, which are still
+ * located by a computed path. Every page then answers 200 with correct markup
+ * while every stylesheet and island chunk on it answers 404 - a site that looks
+ * deployed and arrives unstyled and inert.
  *
  * Worth naming here because every one of them looks like a mistake in the
  * user's own project rather than in the framework.
@@ -104,7 +109,7 @@ async function checkFrameworkVersion(): Promise<Finding> {
         detail:
           "A deploy that copies the build elsewhere - a container, a serverless " +
           "function, a CI artifact - will start and then 404 every path. " +
-          "Upgrade to 0.1.6.",
+          "Upgrade to 0.1.7.",
       };
     }
 
@@ -116,7 +121,7 @@ async function checkFrameworkVersion(): Promise<Finding> {
           "The island manifest is read through a runtime path, so a platform that " +
           "traces imports leaves it behind and the server throws at boot with " +
           "'Island manifest not found'. Affects Vercel and anything similar; a VPS " +
-          "or container that ships the directory is unaffected. Upgrade to 0.1.6.",
+          "or container that ships the directory is unaffected. Upgrade to 0.1.7.",
       };
     }
 
@@ -129,7 +134,21 @@ async function checkFrameworkVersion(): Promise<Finding> {
           "tracing cannot follow. Where the file does not arrive nothing throws - the " +
           "app comes up on defaults, with your csp, cors and trustProxy silently " +
           "absent - or refuses to start if the config is where your CSRF secret comes " +
-          "from. Affects Vercel and anything similar. Upgrade to 0.1.6.",
+          "from. Affects Vercel and anything similar. Upgrade to 0.1.7.",
+      };
+    }
+
+    if (compareVersions(version, "0.1.7") < 0) {
+      return {
+        severity: "warn",
+        title: `stoneware ${version} deploys sites whose stylesheet and islands 404`,
+        detail:
+          "The built client chunks are served from a path computed at runtime, so a " +
+          "platform that traces imports never ships them. Every page answers 200 with " +
+          "correct markup while every stylesheet and island chunk on it answers 404 - " +
+          "which reads as a CSS bug rather than a missing file. Affects Vercel and " +
+          "anything similar; `build --target vercel` now copies them into public/. " +
+          "Upgrade to 0.1.7.",
       };
     }
 
