@@ -173,3 +173,44 @@ describe("tag and attribute classification is cached", () => {
     expect(html(<div className="still-aliased" />)).toBe(`<div class="still-aliased"></div>`);
   });
 });
+
+describe("signals from a second copy of the library", () => {
+  /**
+   * A project that installs `@preact/signals-core` itself, at a version outside
+   * the range the framework resolved, ends up with two copies. `instanceof`
+   * compares against one of them, so a signal made by the other answers false -
+   * and every island that renders a signal server-side throws "cannot render an
+   * instance of a", naming a minified class inside a dependency, on a component
+   * that is perfectly correct.
+   *
+   * The library brands its prototype with `Symbol.for("preact-signals")`, and a
+   * registry symbol is identical across copies, so that is what the check uses.
+   * Simulated here rather than installed twice: what matters is an object that
+   * carries the brand without being an instance of *this* Signal.
+   */
+  const foreignSignal = (value: unknown) => ({
+    brand: Symbol.for("preact-signals"),
+    value,
+  });
+
+  test("renders as its value, not as an unsupported object", () => {
+    expect(html(<p>{foreignSignal("hello") as never}</p>)).toBe("<p>hello</p>");
+  });
+
+  test("works in an attribute too", () => {
+    expect(html(<div class={foreignSignal("card") as never} />)).toBe(`<div class="card"></div>`);
+  });
+
+  test("its value is still escaped", () => {
+    // Coming from another copy must not mean coming from a trusted one.
+    expect(html(<p>{foreignSignal("<script>alert(1)</script>") as never}</p>)).not.toContain(
+      "<script>",
+    );
+  });
+
+  test("an object that merely has a value property is still refused", () => {
+    // The brand is the whole test. Without it this is an ordinary object, and
+    // rendering it would be the bug the error message exists to report.
+    expect(() => html(<p>{{ value: "not a signal" } as never}</p>)).toThrow(/Cannot render/);
+  });
+});

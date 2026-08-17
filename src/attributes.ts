@@ -15,6 +15,42 @@
  */
 
 /**
+ * Is this a signal?
+ *
+ * `instanceof` is the obvious check and it is not sufficient. It compares
+ * against one particular copy of the `Signal` class, so it answers false for a
+ * signal produced by a second copy of `@preact/signals-core` - which happens
+ * whenever a project installs the package itself at a version outside the range
+ * the framework resolved, and the installer keeps both.
+ *
+ * The failure that produces is thoroughly confusing: every island that renders
+ * a signal server-side throws "cannot render an instance of a", naming a
+ * minified class from inside a dependency, on a component that is correct.
+ *
+ * `brand` is set on the prototype by the library itself and its value is
+ * `Symbol.for("preact-signals")` - a *registry* symbol, so two independent
+ * copies produce the identical symbol. Checking it is the version of this
+ * question that does not care how many copies exist.
+ *
+ * `instanceof` stays as the first test because it is the common case and the
+ * cheaper one; the brand is the fallback that makes the answer correct.
+ */
+const SIGNAL_BRAND = Symbol.for("preact-signals");
+
+/**
+ * Narrowed structurally rather than to `Signal`, so this module keeps its one
+ * invariant: it imports nothing, because it ships to the browser inside the
+ * island runtime. `.value` is the only member either renderer reads.
+ */
+export function isSignalLike(value: unknown): value is { value: unknown } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { brand?: unknown }).brand === SIGNAL_BRAND
+  );
+}
+
+/**
  * Event-handler attributes, in any casing.
  *
  * Case-insensitive deliberately. `on[A-Z]` matches the camelCase form an author

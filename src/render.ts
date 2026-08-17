@@ -14,6 +14,7 @@ import {
   ATTRIBUTE_ALIASES,
   EVENT_HANDLER,
   VALID_ATTRIBUTE_NAME,
+  isSignalLike,
   unsafeURLReason,
 } from "./attributes.ts";
 import { noteCaught, peekRenderContext } from "./context.ts";
@@ -279,7 +280,9 @@ function renderChild(child: Child, ctx: Context): string {
 
   // A signal renders its current value. On the server that is a one-time read;
   // the reactive binding is established later, in the browser.
-  if (child instanceof Signal) return renderChild(child.value, ctx);
+  if (child instanceof Signal || isSignalLike(child)) {
+    return renderChild((child as { value: Child }).value, ctx);
+  }
 
   if (Array.isArray(child)) {
     let out = "";
@@ -641,7 +644,9 @@ function renderAttributes(props: Props, tag: string): string {
 
     const attribute = classified;
     let value = props[name];
-    if (value instanceof Signal) value = value.value;
+    if (value instanceof Signal || isSignalLike(value)) {
+      value = (value as { value: unknown }).value;
+    }
 
     if (value == null || value === false) continue;
     if (value === true) {

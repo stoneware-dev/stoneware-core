@@ -9,7 +9,7 @@
  */
 
 import { Signal, effect } from "@preact/signals-core";
-import { ATTRIBUTE_ALIASES, EVENT_HANDLER, unsafeURLReason } from "../attributes.ts";
+import { ATTRIBUTE_ALIASES, EVENT_HANDLER, isSignalLike, unsafeURLReason } from "../attributes.ts";
 import { Fragment, isRaw, isVNode } from "../types.ts";
 import type { Child, Props, VNode } from "../types.ts";
 
@@ -52,8 +52,8 @@ function mountChild(child: Child, parent: Node, scope: MountScope): void {
     return;
   }
 
-  if (child instanceof Signal) {
-    mountSignalChild(child, parent, scope);
+  if (child instanceof Signal || isSignalLike(child)) {
+    mountSignalChild(child as Signal<unknown>, parent, scope);
     return;
   }
 
@@ -155,8 +155,9 @@ function mountVNode(vnode: VNode, parent: Node, scope: MountScope): void {
 }
 
 function bindAttribute(element: Element, name: string, value: unknown, scope: MountScope): void {
-  if (value instanceof Signal) {
-    const dispose = effect(() => setAttribute(element, name, value.value));
+  if (value instanceof Signal || isSignalLike(value)) {
+    const signal = value as { value: unknown };
+    const dispose = effect(() => setAttribute(element, name, signal.value));
     scope.disposers.push(dispose);
     return;
   }
