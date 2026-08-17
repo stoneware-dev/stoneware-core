@@ -15,7 +15,7 @@ export { seo } from "./seo.tsx";
 export { notFound, isNotFound } from "./not-found.ts";
 export { requestURL } from "./url.ts";
 export { createApp, serve } from "./server.ts";
-export { defineConfig, resolveConfig, loadConfigFile, DEFAULT_CSP } from "./config.ts";
+export { defineConfig, resolveConfig, loadConfigFile, buildCSP, DEFAULT_CSP } from "./config.ts";
 export { Router } from "./router.ts";
 export { generateToken, verifyRequest, isSafeMethod } from "./csrf.ts";
 export { csrfToken, csrfFieldName } from "./public-csrf.ts";
@@ -37,6 +37,7 @@ export type {
   ResolvedConfig,
   CSRFConfig,
   CORSConfig,
+  CSPSources,
 } from "./config.ts";
 export type { Middleware, MiddlewareContext, Locals } from "./middleware.ts";
 export type {

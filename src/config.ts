@@ -42,13 +42,33 @@ export interface StonewareConfig {
   outDir?: string;
 
   /**
-   * `Content-Security-Policy` header value.
+   * `Content-Security-Policy`.
    *
-   * Defaults to a policy with no `unsafe-inline` and no `unsafe-eval`. Pass a
-   * string to replace it, or `false` to omit the header - an explicit,
-   * greppable choice, never an accident.
+   * Three forms, in increasing order of how much you are taking on:
+   *
+   *   omit it        the default policy: no `unsafe-inline`, no `unsafe-eval`
+   *   an object      the default policy, plus the origins you name
+   *   a string       your policy, replacing the default entirely
+   *   `false`        no header at all
+   *
+   * The object is the one to reach for when adding a third party. Naming the
+   * origins you need keeps every other directive - `object-src 'none'`,
+   * `base-uri 'self'`, `frame-ancestors 'none'` - exactly as the framework set
+   * them:
+   *
+   * ```ts
+   * csp: {
+   *   scriptSrc: ["https://www.googletagmanager.com"],
+   *   connectSrc: ["https://www.google-analytics.com"],
+   *   imgSrc: ["https://www.google-analytics.com"],
+   * }
+   * ```
+   *
+   * Before the object form existed the only way to allow one origin was to
+   * retype the whole policy as a string, and a policy retyped by hand is a
+   * policy with a directive missing from it.
    */
-  csp?: string | false;
+  csp?: string | false | CSPSources;
 
   csrf?: CSRFConfig;
 
@@ -194,6 +214,90 @@ export const DEFAULT_CSP = [
   "frame-ancestors 'none'",
 ].join("; ");
 
+/**
+ * Extra origins to allow, per directive.
+ *
+ * Every field is *added to* the framework default rather than replacing it, so
+ * `'self'` and the directives you did not mention survive. Naming a directive
+ * the default policy has no entry for - `frame-src`, `worker-src` - creates it
+ * seeded with `'self'`, because that is what it inherited from `default-src`
+ * and dropping it would break same-origin frames and workers while allowing a
+ * third party's.
+ */
+export interface CSPSources {
+  defaultSrc?: string[];
+  scriptSrc?: string[];
+  styleSrc?: string[];
+  imgSrc?: string[];
+  fontSrc?: string[];
+  connectSrc?: string[];
+  frameSrc?: string[];
+  workerSrc?: string[];
+  mediaSrc?: string[];
+  objectSrc?: string[];
+  baseUri?: string[];
+  formAction?: string[];
+  frameAncestors?: string[];
+}
+
+/** `scriptSrc` -> `script-src`. */
+function directiveName(key: string): string {
+  return key.replace(/[A-Z]/g, (ch) => `-${ch.toLowerCase()}`);
+}
+
+/**
+ * A source has to be one token.
+ *
+ * `;` would end the directive and begin another, so a value carrying one could
+ * append `script-src 'unsafe-inline'` to a policy that never asked for it -
+ * which matters because these values are exactly the kind read from an
+ * environment variable or a CMS field. Whitespace is refused for the same
+ * reason, and an empty string because it silently produces a malformed policy.
+ */
+function assertSource(directive: string, source: string): void {
+  if (typeof source !== "string" || source.trim() === "") {
+    throw new Error(`csp.${directive} contains an empty source.`);
+  }
+  if (/[;,]/.test(source) || /\s/.test(source)) {
+    throw new Error(
+      `csp.${directive} source ${JSON.stringify(source)} contains ";", "," or whitespace. ` +
+        `Each source is one token - list several instead of joining them.`,
+    );
+  }
+}
+
+/**
+ * The default policy with extra origins folded in.
+ *
+ * Exported so a project that wants to see what it will send can print it, and
+ * so the same builder is used by the tests that guard the defaults.
+ */
+export function buildCSP(sources: CSPSources): string {
+  const policy = new Map<string, string[]>();
+  for (const directive of DEFAULT_CSP.split("; ")) {
+    const [name, ...values] = directive.split(" ");
+    policy.set(name!, values);
+  }
+
+  for (const [key, added] of Object.entries(sources)) {
+    if (added === undefined) continue;
+    const name = directiveName(key);
+    for (const source of added) assertSource(key, source);
+
+    // Absent from the default policy, so it was inheriting default-src. Seed
+    // with 'self' or adding one origin would remove the site's own.
+    const existing = policy.get(name) ?? ["'self'"];
+
+    // `'none'` may not appear beside anything else - the browser treats the
+    // whole directive as invalid. Adding a source means it is no longer none.
+    const base = existing.length === 1 && existing[0] === "'none'" ? [] : existing;
+
+    policy.set(name, [...new Set([...base, ...added])]);
+  }
+
+  return [...policy].map(([name, values]) => [name, ...values].join(" ")).join("; ");
+}
+
 /** Security headers sent alongside the CSP on every HTML response. */
 export const SECURITY_HEADERS: Record<string, string> = {
   "X-Content-Type-Options": "nosniff",
@@ -231,6 +335,13 @@ function resolveCSRFSecret(configured: string | undefined, dev: boolean): string
   return ephemeralSecret;
 }
 
+function resolveCSP(csp: StonewareConfig["csp"]): string | false {
+  if (csp === undefined) return DEFAULT_CSP;
+  if (csp === false) return false;
+  if (typeof csp === "string") return csp;
+  return buildCSP(csp);
+}
+
 export function resolveConfig(config: StonewareConfig = {}, dev = false): ResolvedConfig {
   const root = resolve(config.root ?? process.cwd());
 
@@ -249,7 +360,11 @@ export function resolveConfig(config: StonewareConfig = {}, dev = false): Resolv
     islandsDir: resolve(root, config.islandsDir ?? "islands"),
     publicDir: resolve(root, config.publicDir ?? "public"),
     outDir: resolve(root, config.outDir ?? ".stoneware"),
-    csp: config.csp === undefined ? DEFAULT_CSP : config.csp,
+    // Resolved to a string here, once. Everything downstream - the response
+    // header, the <meta> an export embeds, the _headers file it writes - keeps
+    // reading a plain string, so the object form needs no support anywhere
+    // else and cannot behave differently between SSR and a static export.
+    csp: resolveCSP(config.csp),
     csrf: {
       secret: resolveCSRFSecret(config.csrf?.secret, dev),
       expiresIn: config.csrf?.expiresIn ?? 24 * 60 * 60 * 1000,

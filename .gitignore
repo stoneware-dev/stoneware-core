@@ -70,3 +70,4 @@ notes/
 
 # Note: bun.lock is deliberately NOT ignored. Commit it so installs are
 # reproducible.
+.csp-lab/
