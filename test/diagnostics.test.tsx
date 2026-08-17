@@ -38,7 +38,12 @@ describe("JSX compiled against the wrong runtime", () => {
   });
 
   test("an ordinary object still gets the ordinary error", () => {
-    expect(() => renderToString({ nope: true } as never)).toThrow(/Cannot render value of type/);
+    // The point of this test is the negative: an object that is not a React
+    // element must not be blamed on the JSX runtime. The wording moved when the
+    // message started naming the value, so it is matched on what it must say
+    // rather than on the sentence it used to be.
+    expect(() => renderToString({ nope: true } as never)).toThrow(/Cannot render a plain object/);
+    expect(() => renderToString({ nope: true } as never)).not.toThrow(/jsxImportSource/);
   });
 });
 

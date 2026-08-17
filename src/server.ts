@@ -22,7 +22,7 @@ import { corsHeaders, preflightResponse } from "./cors.ts";
 import { verifyRequest } from "./csrf.ts";
 import { withRenderContext } from "./context.ts";
 import { buildIslandRegistry, discoverIslands, loadIslands } from "./islands.ts";
-import { renderToString } from "./render.ts";
+import { componentPathOf, formatComponentPath, renderToString } from "./render.ts";
 import { Router } from "./router.ts";
 import { isNotFound } from "./not-found.ts";
 import { notify } from "./observe.ts";
@@ -307,6 +307,10 @@ export async function createApp(
           trace.kind = "error";
           thrown = error;
           console.error("[stoneware] Unhandled error while serving request:", error);
+          // Any error, not only the framework's own. A driver that throws
+          // inside a template gets the same "which component" answer, without
+          // its message being rewritten.
+          describeComponentPath(error, trace.route ?? url.pathname);
           // renderErrorPage never throws, so this catch cannot be re-entered.
           response = withSecurityHeaders(
             await renderErrorPage(500, "Internal Server Error", request, error),
@@ -592,9 +596,30 @@ export async function createApp(
         return htmlResponse(html, status, request);
       }
     } catch (pageError) {
-      console.error(`[stoneware] routes/${name} failed to render:`, pageError);
+      // Two errors are now in play and they are easy to confuse: the one that
+      // brought the request here, and the one the error page just raised. The
+      // second is the louder of the two and the first is the one worth having,
+      // so this says which is which rather than logging a bare stack.
+      console.error(
+        `[stoneware] routes/${name}.tsx threw while rendering the error page.\n` +
+          `  The response below falls back to the built-in page.\n` +
+          `  This is the error page's own failure, not the one that caused the ${status}:`,
+        pageError,
+      );
+      describeComponentPath(pageError, `routes/${name}.tsx`);
+
+      if (error !== undefined) {
+        console.error(
+          `[stoneware] The original error, which is what the ${status} was actually for:`,
+          error,
+        );
+        describeComponentPath(error, "the failing route");
+      }
     }
 
+    // Deliberately the original error, not the error page's. The built-in page
+    // is a fallback for the page that failed, so the error it shows has to be
+    // the one the visitor's request actually hit.
     return errorResponse(status, message, config, dev ? error : undefined, request);
   }
 
@@ -1078,6 +1103,22 @@ export async function serve(
   });
 
   return { app, server };
+}
+
+/**
+ * Log which components an error passed through, when the renderer collected it.
+ *
+ * Separate from the error itself on purpose. The framework rewrites its *own*
+ * render errors to carry the path in their message, but an error thrown by
+ * project code keeps its message exactly as written - a stack from a database
+ * driver should not come back with framework prose appended to it. The path is
+ * still worth having, so it is printed beside the error instead of inside it.
+ */
+function describeComponentPath(error: unknown, where: string): void {
+  const path = componentPathOf(error);
+  if (path === null) return;
+
+  console.error(`[stoneware] ...while rendering ${where}:\n${formatComponentPath(path)}`);
 }
 
 /**

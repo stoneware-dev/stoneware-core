@@ -75,6 +75,14 @@ interface Context {
   islands: Map<Component<any>, string>;
   collected: CollectedIsland[];
   nextId: number;
+  /**
+   * The element currently being rendered into, for error attribution.
+   *
+   * Maintained by save-and-restore around each element's children rather than
+   * by catching, because elements outnumber components heavily and a try/catch
+   * on each one measured 38% of a full page render.
+   */
+  tag: string | null;
 }
 
 /** Render a tree to HTML, collecting any islands encountered along the way. */
@@ -83,9 +91,181 @@ export function renderToString(child: Child, options: RenderOptions = {}): Rende
     islands: options.islands ?? new Map(),
     collected: [],
     nextId: 0,
+    tag: null,
   };
-  const html = renderChild(child, ctx);
+  // The path has finished assembling by the time it reaches here, so this is
+  // where it gets folded into the message.
+  let html: string;
+  try {
+    html = renderChild(child, ctx);
+  } catch (error) {
+    throw finalizeRenderError(error);
+  }
+
   return { html, islands: ctx.collected };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Error attribution                                                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Which components a render error passed through on its way out.
+ *
+ * The renderer is a depth-first walk, so by the time an unsupported value is
+ * discovered the only thing on the stack is the renderer itself: `renderChild`
+ * called by `renderElement` called by `renderChild`, over and over. That names
+ * the mechanism and not one line of the project's own code, which is the
+ * opposite of what a stack trace is for.
+ *
+ * The walk *does* know, though - it just knows it on the way in, and the error
+ * happens on the way out. So each component and element frame catches, records
+ * its own name, and rethrows. The path assembles itself as the error unwinds,
+ * costs nothing when nothing throws, and needs no bookkeeping on the hot path.
+ */
+const RENDER_ERROR = Symbol.for("stoneware.renderError");
+const COMPONENT_PATH = Symbol.for("stoneware.componentPath");
+
+interface RenderErrorParts {
+  /** First line: what went wrong. */
+  headline: string;
+  /** Everything after the path: what to do about it. */
+  detail: string;
+}
+
+type Annotated = {
+  [RENDER_ERROR]?: RenderErrorParts;
+  [COMPONENT_PATH]?: string[];
+};
+
+/**
+ * A render error the framework raised itself.
+ *
+ * Held as parts rather than a finished string because the path belongs between
+ * them, and the path is not known until the error has finished unwinding.
+ */
+function renderError(parts: RenderErrorParts): TypeError {
+  const error = new TypeError(`${parts.headline}\n\n${parts.detail}`);
+
+  // Drop this factory from the trace. Without it the first frame - and the
+  // source excerpt printed above it - is the line inside render.ts that
+  // constructs the error, which is the least informative line in the whole
+  // stack and sits exactly where someone looks first.
+  Error.captureStackTrace?.(error, renderError);
+
+  Object.defineProperty(error, RENDER_ERROR, {
+    value: parts,
+    enumerable: false,
+    configurable: true,
+    writable: true,
+  });
+  return error;
+}
+
+/** Record one frame. Anything not an object - a thrown string - is left alone. */
+function noteFrame(error: unknown, frame: string): void {
+  if (typeof error !== "object" || error === null) return;
+  const annotated = error as Annotated;
+
+  let path = annotated[COMPONENT_PATH];
+  if (path === undefined) {
+    path = [];
+    // Non-enumerable, or every console.error that prints this error also prints
+    // `stoneware.componentPath: [ "<span>", ... ]` after the stack - the same
+    // information a second time, as noise, in the one place someone is already
+    // reading carefully.
+    Object.defineProperty(error, COMPONENT_PATH, {
+      value: path,
+      enumerable: false,
+      configurable: true,
+      writable: true,
+    });
+  }
+
+  // Capped: a deep tree would otherwise append a hundred frames, and the ones
+  // that identify the problem are the innermost few.
+  if (path.length < MAX_PATH_FRAMES) path.push(frame);
+}
+
+const MAX_PATH_FRAMES = 12;
+
+/**
+ * The components an error passed through, innermost first.
+ *
+ * Exported so the request pipeline can report it for *any* error, not only the
+ * framework's own: a database driver that throws inside a template gets the
+ * same "which component" answer, without its message being rewritten.
+ */
+export function componentPathOf(error: unknown): string[] | null {
+  if (typeof error !== "object" || error === null) return null;
+  const path = (error as Annotated)[COMPONENT_PATH];
+  return path && path.length > 0 ? path : null;
+}
+
+/** Render the collected path as indented `in <X>` lines. */
+export function formatComponentPath(path: string[]): string {
+  const lines = path.map((frame) => `  in ${frame}`);
+  if (path.length >= MAX_PATH_FRAMES) lines.push("  in ... (outer frames omitted)");
+  return lines.join("\n");
+}
+
+/**
+ * Fold the collected path into the message, once.
+ *
+ * Only for errors the framework raised. A thrown value from project code keeps
+ * its own message exactly as written - the path is still attached, and the
+ * server logs it separately.
+ */
+export function finalizeRenderError(error: unknown): unknown {
+  if (typeof error !== "object" || error === null) return error;
+
+  const annotated = error as Annotated;
+  const parts = annotated[RENDER_ERROR];
+  if (parts === undefined) return error;
+
+  // Cleared first, so an error that passes through two renders - a boundary
+  // fallback that rethrows, say - is not annotated twice.
+  delete annotated[RENDER_ERROR];
+
+  const path = annotated[COMPONENT_PATH];
+  if (path === undefined || path.length === 0) return error;
+
+  (error as { message: string }).message =
+    `${parts.headline}\n\n${formatComponentPath(path)}\n\n${parts.detail}`;
+  return error;
+}
+
+/**
+ * What the unsupported value actually was.
+ *
+ * "Cannot render value of type object" is true of a Date, a database row, a
+ * Map, and a class instance, and the fix is different for each. Keys are named
+ * rather than values printed: `{ id, title, price }` is enough to recognise a
+ * product row, while dumping the values would put whatever the row holds into
+ * a log line.
+ */
+function describeValue(value: object): string {
+  if (value instanceof Date) {
+    return "a Date. Format it first - {date.toISOString()} or your own helper";
+  }
+  if (value instanceof Map || value instanceof Set) {
+    return `a ${value.constructor.name} of size ${value.size}. Render [...value] instead`;
+  }
+  if (value instanceof Promise) {
+    return "a Promise. Only a route's default export may be async";
+  }
+
+  const name = value.constructor?.name;
+  if (name !== undefined && name !== "Object") {
+    return `an instance of ${name}. Render the fields you want, not the object`;
+  }
+
+  const keys = Object.keys(value);
+  if (keys.length === 0) return "a plain object with no keys";
+
+  const shown = keys.slice(0, 8).join(", ");
+  const rest = keys.length > 8 ? `, ... (${keys.length} keys)` : "";
+  return `a plain object with keys: ${shown}${rest}`;
 }
 
 function renderChild(child: Child, ctx: Context): string {
@@ -115,33 +295,47 @@ function renderChild(child: Child, ctx: Context): string {
   // before rendering starts. Naming the rule beats "cannot render value of type
   // object", which sends people looking at their data.
   if (typeof (child as { then?: unknown }).then === "function") {
-    throw new TypeError(
-      `A component returned a promise while rendering.\n` +
+    throw renderError({
+      headline: "A component returned a promise while rendering.",
+      detail:
         `Only a route's default export may be async - the server awaits that one ` +
         `call before rendering begins. A component nested inside JSX cannot be, ` +
         `because rendering never awaits.\n\n` +
         `Fetch in the route and pass the result down as props.`,
-    );
+    });
   }
 
   // A React element got here, which means JSX was compiled against React's
   // runtime rather than Stoneware's. Naming that beats "cannot render value of
   // type object", which sends people looking at their data.
   if (isReactElement(child)) {
-    throw new TypeError(
-      `This JSX was compiled with React's runtime, not Stoneware's.\n` +
+    throw renderError({
+      headline: "This JSX was compiled with React's runtime, not Stoneware's.",
+      detail:
         `Set the compiler options in tsconfig.json:\n\n` +
         `  "jsx": "react-jsx",\n` +
         `  "jsxImportSource": "stoneware"\n\n` +
         `A project created with create-stoneware has these already; a file outside ` +
         `the project's tsconfig, or an editor using a different one, is the usual cause.`,
-    );
+    });
   }
 
-  throw new TypeError(
-    `Cannot render value of type ${typeof child}. ` +
-      `Templates may return elements, strings, numbers, arrays, signals, or null.`,
-  );
+  // Naming what the value *was* is most of the fix. "type object" is equally
+  // true of a Date, a database row and a Map, and each needs something
+  // different done to it.
+  const what = typeof child === "object" ? describeValue(child as object) : `of type ${typeof child}`;
+
+  const error = renderError({
+    headline: `Cannot render ${what}.`,
+    detail:
+      `Templates may return elements, strings, numbers, arrays, signals, or null.\n` +
+      `An object has to become markup or text first - {product.title}, not {product}.`,
+  });
+
+  // The element the value was interpolated into is the most specific frame
+  // there is, and it is already known - no per-element bookkeeping required.
+  if (ctx.tag !== null) noteFrame(error, `<${ctx.tag}>`);
+  throw error;
 }
 
 /**
@@ -171,8 +365,19 @@ function renderVNode(vnode: VNode, ctx: Context): string {
 
     const islandName = ctx.islands.get(type);
     if (islandName !== undefined) return renderIsland(islandName, type, props, ctx);
+
     // A plain template function: called once, on the server, per request.
-    return renderChild(type(props), ctx);
+    //
+    // The catch is what turns "somewhere in render.ts" into "in <ProductCard>".
+    // It costs nothing while nothing throws, and the frame it adds is the one
+    // piece of information the stack trace cannot supply - the renderer's own
+    // frames are all identical.
+    try {
+      return renderChild(type(props), ctx);
+    } catch (error) {
+      noteFrame(error, `<${type.name || "anonymous component"}>`);
+      throw error;
+    }
   }
 
   if (typeof type !== "string") {
@@ -217,7 +422,9 @@ function renderBoundary(props: BoundaryProps, ctx: Context): string {
       for (const tag of preloads) context.preloads.add(tag);
     }
 
-    reportCaught(error);
+    // Finalized here too: a boundary is a second exit from the walk, and its
+    // console line is the only place this error is ever seen.
+    reportCaught(finalizeRenderError(error));
 
     // If the fallback throws too there is nothing sensible left to do, so it
     // propagates: the route's _500 page handles it, and the stack points at the
@@ -363,7 +570,18 @@ function renderElement(tag: string, props: Props, ctx: Context): string {
   } else if (tagClass === TAG_RAW_TEXT) {
     html += renderRawTextContent(tag, props.children as Child);
   } else {
+    // The innermost element, recorded by two field writes rather than by a
+    // try/catch. Elements outnumber components by an order of magnitude, and
+    // wrapping each one cost 38% of a full page render - measured, after the
+    // first attempt did exactly that. Save-and-restore is free by comparison.
+    //
+    // No `finally` on the restore, deliberately: the value is read at the
+    // moment of the throw, before any unwinding, so it is already correct - and
+    // a render that threw discards its context anyway.
+    const enclosing = ctx.tag;
+    ctx.tag = tag;
     html += renderChild(props.children as Child, ctx);
+    ctx.tag = enclosing;
   }
 
   return `${html}</${tag}>`;
