@@ -20,6 +20,7 @@ node_modules/
 .no-output-either/
 .vercel-assets-test/
 .vercel-assets-traced/
+.inline-assets-test/
 .vercelsim/
 # Client chunks copied by `build --target vercel` in the scratch projects.
 public/_stoneware/

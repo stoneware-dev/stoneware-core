@@ -73,7 +73,7 @@ function checkBunVersion(): Finding {
 }
 
 /**
- * Four versions of one mistake, each fatal to a deploy and none visible
+ * Five versions of one mistake, each fatal to a deploy and none visible
  * locally - because locally the build directory and the run directory are the
  * same one.
  *
@@ -94,6 +94,11 @@ function checkBunVersion(): Finding {
  * while every stylesheet and island chunk on it answers 404 - a site that looks
  * deployed and arrives unstyled and inert.
  *
+ * 0.1.7 tried to fix that by copying them into public/, which is not enough:
+ * Vercel collects public/ from the repository, so a directory the build creates
+ * is never in the snapshot. 0.1.8 carries them inside the bundle, which is the
+ * one form tracing cannot lose.
+ *
  * Worth naming here because every one of them looks like a mistake in the
  * user's own project rather than in the framework.
  */
@@ -109,7 +114,7 @@ async function checkFrameworkVersion(): Promise<Finding> {
         detail:
           "A deploy that copies the build elsewhere - a container, a serverless " +
           "function, a CI artifact - will start and then 404 every path. " +
-          "Upgrade to 0.1.7.",
+          "Upgrade to 0.1.8.",
       };
     }
 
@@ -121,7 +126,7 @@ async function checkFrameworkVersion(): Promise<Finding> {
           "The island manifest is read through a runtime path, so a platform that " +
           "traces imports leaves it behind and the server throws at boot with " +
           "'Island manifest not found'. Affects Vercel and anything similar; a VPS " +
-          "or container that ships the directory is unaffected. Upgrade to 0.1.7.",
+          "or container that ships the directory is unaffected. Upgrade to 0.1.8.",
       };
     }
 
@@ -134,11 +139,11 @@ async function checkFrameworkVersion(): Promise<Finding> {
           "tracing cannot follow. Where the file does not arrive nothing throws - the " +
           "app comes up on defaults, with your csp, cors and trustProxy silently " +
           "absent - or refuses to start if the config is where your CSRF secret comes " +
-          "from. Affects Vercel and anything similar. Upgrade to 0.1.7.",
+          "from. Affects Vercel and anything similar. Upgrade to 0.1.8.",
       };
     }
 
-    if (compareVersions(version, "0.1.7") < 0) {
+    if (compareVersions(version, "0.1.8") < 0) {
       return {
         severity: "warn",
         title: `stoneware ${version} deploys sites whose stylesheet and islands 404`,
@@ -146,9 +151,10 @@ async function checkFrameworkVersion(): Promise<Finding> {
           "The built client chunks are served from a path computed at runtime, so a " +
           "platform that traces imports never ships them. Every page answers 200 with " +
           "correct markup while every stylesheet and island chunk on it answers 404 - " +
-          "which reads as a CSS bug rather than a missing file. Affects Vercel and " +
-          "anything similar; `build --target vercel` now copies them into public/. " +
-          "Upgrade to 0.1.7.",
+          "which reads as a CSS bug rather than a missing file. 0.1.7 tried copying " +
+          "them into public/, which is not enough: Vercel collects public/ from the " +
+          "repository, so a directory the build creates is never in the snapshot. From " +
+          "0.1.8 `build --target vercel` carries them inside the bundle. Upgrade to 0.1.8.",
       };
     }
 

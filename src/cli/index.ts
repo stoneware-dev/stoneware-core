@@ -175,7 +175,7 @@ async function main(): Promise<void> {
       }
 
       const started = performance.now();
-      const result = await build(args.root);
+      const result = await build(args.root, { inlineAssets: target === "vercel" });
       const elapsed = Math.round(performance.now() - started);
       console.log(`[stoneware] build complete in ${elapsed}ms`);
       console.log(describeBuild(result, args.root));

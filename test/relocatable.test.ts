@@ -17,7 +17,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { cp, mkdir, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { build } from "../src/cli/build.ts";
+import { build, inlineClientAssets } from "../src/cli/build.ts";
 import type { BuildResult } from "../src/cli/build.ts";
 import { createApp } from "../src/server.ts";
 import { Router, scanRoutes } from "../src/router.ts";
@@ -32,7 +32,14 @@ const buildDir = join(import.meta.dir, "..", ".relocatable-build");
 const runDir = join(import.meta.dir, "..", ".relocatable-run-elsewhere");
 
 let bundleText = "";
+let entrySource = "";
 let buildResult: BuildResult;
+
+// The chunks the build emits, base64 by filename - the same values a
+// --target vercel build carries inside the bundle. Derived from the build above
+// rather than from a second one: two Bun.build calls in one process race on
+// Windows reading signals-core.
+let inlineAssets: Record<string, string> = {};
 
 beforeAll(async () => {
   process.env.STONEWARE_CSRF_SECRET = "relocatable-test-secret-0123456789";
@@ -46,12 +53,15 @@ beforeAll(async () => {
   await rm(join(buildDir, ".stoneware"), { recursive: true, force: true });
   buildResult = await build(buildDir);
   bundleText = await Bun.file(join(buildDir, ".stoneware", "server.js")).text();
+  entrySource = await Bun.file(join(buildDir, ".stoneware", "server-entry.ts")).text();
 
   // ...then move the result somewhere else entirely, and take the source tree
   // away. What is left is what a deploy artifact actually looks like.
   await cp(buildDir, runDir, { recursive: true });
   await rm(join(runDir, "routes"), { recursive: true, force: true });
   await rm(join(runDir, "islands"), { recursive: true, force: true });
+
+  inlineAssets = await inlineClientAssets(join(buildDir, ".stoneware", "static"));
 });
 
 afterAll(async () => {
@@ -426,5 +436,221 @@ describe("client assets reach a platform that ships only what it traced", () => 
 
   test("traversal out of the asset directory is still refused", async () => {
     expect((await fetch(`${base}/_stoneware/..%2F..%2Fstoneware.config.ts`)).status).toBe(404);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Carrying the client chunks inside the bundle.
+ *
+ * The fifth instance of the same lesson. The chunks are found through a path
+ * computed at runtime, so a platform that builds a function by tracing imports
+ * never uploads them: every page answers 200 with correct markup while every
+ * stylesheet and island chunk on it answers 404, which reads as a CSS bug
+ * rather than a missing file.
+ *
+ * Copying them into `public/` was tried first and is not enough - Vercel
+ * collects `public/` from the repository, so a directory the build creates is
+ * not in the snapshot, and it is gitignored build output so committing it is
+ * not an answer either. Carrying them as a value is the only form that cannot
+ * be lost, because tracing follows a static import by definition.
+ *
+ * So the test is not "were they inlined". It is: serve with the build directory
+ * and public/ both absent, and check the URLs the markup points at still answer.
+ */
+describe("client chunks travel inside the bundle when asked", () => {
+
+
+  test("a default build does not carry them", () => {
+    // buildDir was built without the option. Every byte here is paid for by a
+    // deploy that does not need it - a container ships the directory itself.
+    expect(entrySource).toContain("const inlineAssets = undefined;");
+  });
+
+  test("a chunk is served with nothing on disk at all", async () => {
+    const app = await createApp(
+      { root: join(import.meta.dir, "..", ".no-disk-at-all") },
+      {
+        dev: false,
+        routeManifest: { "/": join(buildDir, "routes", "index.tsx") },
+        preloadedRoutes: new Map([["/", await import(join(FIXTURE_ROOT, "routes", "index.tsx"))]]),
+        islandManifest: { Badge: "/_stoneware/Badge-x.js" },
+        stylesheet: "/_stoneware/styles-x.css",
+        inlineAssets,
+      },
+    );
+
+    const name = Object.keys(inlineAssets).find((file) => file.endsWith(".css"))!;
+    const response = await app.fetch(new Request(`http://localhost/_stoneware/${name}`));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toContain("text/css");
+    // Hashed filenames, so a year of caching is correct and must survive the
+    // change of source.
+    expect(response.headers.get("Cache-Control")).toContain("immutable");
+    expect((await response.text()).length).toBeGreaterThan(0);
+  });
+
+  test("javascript keeps its own content type", async () => {
+    const app = await createApp(
+      { root: join(import.meta.dir, "..", ".no-disk-at-all") },
+      {
+        dev: false,
+        routeManifest: { "/": join(buildDir, "routes", "index.tsx") },
+        preloadedRoutes: new Map([["/", await import(join(FIXTURE_ROOT, "routes", "index.tsx"))]]),
+        islandManifest: { Badge: "/_stoneware/Badge-x.js" },
+        inlineAssets,
+      },
+    );
+
+    const name = Object.keys(inlineAssets).find((file) => file.endsWith(".js"))!;
+    const response = await app.fetch(new Request(`http://localhost/_stoneware/${name}`));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toContain("javascript");
+    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+  });
+
+  test("a chunk that was never built is still a 404", async () => {
+    const app = await createApp(
+      { root: join(import.meta.dir, "..", ".no-disk-at-all") },
+      {
+        dev: false,
+        routeManifest: { "/": join(buildDir, "routes", "index.tsx") },
+        preloadedRoutes: new Map([["/", await import(join(FIXTURE_ROOT, "routes", "index.tsx"))]]),
+        islandManifest: { Badge: "/_stoneware/Badge-x.js" },
+        inlineAssets,
+      },
+    );
+
+    expect((await app.fetch(new Request("http://localhost/_stoneware/nope.js"))).status).toBe(404);
+  });
+});
+
+/**
+ * The lookup key comes straight off the URL, which is the whole risk.
+ *
+ * These are separated from the tests above because they are not about whether
+ * the feature works — they are about what it does when asked for something
+ * nobody built.
+ */
+describe("asking the bundle for a chunk that is not in it", () => {
+  const withAssets = async (assets: Record<string, string>) =>
+    createApp(
+      { root: FIXTURE_ROOT, csrf: { secret: "relocatable-test-secret-0123456789" } },
+      {
+        dev: false,
+        routeManifest: { "/": join(FIXTURE_ROOT, "routes", "index.tsx") },
+        preloadedRoutes: new Map([["/", await import(join(FIXTURE_ROOT, "routes", "index.tsx"))]]),
+        islandManifest: { Badge: "/_stoneware/Badge-x.js" },
+        inlineAssets: assets,
+      },
+    );
+
+  const encode = (text: string) => Buffer.from(text).toString("base64");
+
+  test("a key every object answers for is still a 404", async () => {
+    // The bug this pins: the chunks arrived as a plain object, and
+    // `assets["toString"]` is a function rather than undefined. That passed the
+    // presence check and handed a function to a base64 decoder, so
+    // `/_stoneware/toString` answered 500 - an unauthenticated request turning
+    // into a server error. A Map has no inherited keys.
+    const app = await withAssets({ "real.css": encode("body{}") });
+
+    for (const key of ["__proto__", "constructor", "toString", "valueOf", "hasOwnProperty"]) {
+      const response = await app.fetch(new Request(`http://localhost/_stoneware/${key}`));
+      expect(response.status).toBe(404);
+    }
+  });
+
+  test("traversal out of the prefix is refused", async () => {
+    const app = await withAssets({ "real.css": encode("body{}") });
+
+    for (const path of ["/_stoneware/..%2f..%2fpackage.json", "/_stoneware/../package.json"]) {
+      expect((await app.fetch(new Request("http://localhost" + path))).status).toBe(404);
+    }
+  });
+
+  test("an empty inline map behaves exactly as no map at all", async () => {
+    // A project with no islands and no CSS builds to `{}`, and must not stop
+    // serving public/ or start answering for chunks it never produced.
+    const app = await withAssets({});
+
+    expect((await app.fetch(new Request("http://localhost/styles.css"))).status).toBe(200);
+    expect((await app.fetch(new Request("http://localhost/_stoneware/x.js"))).status).toBe(404);
+  });
+});
+
+describe("what an inlined chunk is served as", () => {
+  const encode = (text: string) => Buffer.from(text).toString("base64");
+
+  let app: Awaited<ReturnType<typeof createApp>>;
+
+  beforeAll(async () => {
+    app = await createApp(
+      { root: FIXTURE_ROOT, csrf: { secret: "relocatable-test-secret-0123456789" } },
+      {
+        dev: false,
+        routeManifest: { "/": join(FIXTURE_ROOT, "routes", "index.tsx") },
+        preloadedRoutes: new Map([["/", await import(join(FIXTURE_ROOT, "routes", "index.tsx"))]]),
+        islandManifest: { Badge: "/_stoneware/Badge-x.js" },
+        inlineAssets: {
+          "styles-a.css": encode("body{color:red}"),
+          "chunk-b.js": encode("export{}"),
+          "empty.css": "",
+          "font-c.woff2": Buffer.from([0x77, 0x4f, 0x46, 0x32]).toString("base64"),
+          "weird.xyz": encode("data"),
+          "nested/deep-d.js": encode("nested"),
+        },
+      },
+    );
+  });
+
+  const get = (path: string) => app.fetch(new Request("http://localhost" + path));
+
+  test("css and javascript keep their own content types", async () => {
+    expect((await get("/_stoneware/styles-a.css")).headers.get("Content-Type")).toContain("text/css");
+    expect((await get("/_stoneware/chunk-b.js")).headers.get("Content-Type")).toContain("javascript");
+  });
+
+  test("a font a stylesheet pulled in survives as bytes", async () => {
+    // Why base64 rather than text: `asset: "[name]-[hash].[ext]"` puts whatever
+    // the CSS referenced into the same directory, and some of it is binary.
+    const response = await get("/_stoneware/font-c.woff2");
+    expect(response.headers.get("Content-Type")).toBe("font/woff2");
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(
+      new Uint8Array([0x77, 0x4f, 0x46, 0x32]),
+    );
+  });
+
+  test("an unrecognised extension is served as bytes, not guessed at", async () => {
+    // A wrong Content-Type with nosniff set is worse than a generic one.
+    expect((await get("/_stoneware/weird.xyz")).headers.get("Content-Type")).toBe(
+      "application/octet-stream",
+    );
+  });
+
+  test("an empty file is a 200 with no body, not a miss", async () => {
+    const response = await get("/_stoneware/empty.css");
+    expect(response.status).toBe(200);
+    expect((await response.arrayBuffer()).byteLength).toBe(0);
+  });
+
+  test("a nested chunk path resolves", async () => {
+    expect((await get("/_stoneware/nested/deep-d.js")).status).toBe(200);
+  });
+
+  test("a query string does not make it a different file", async () => {
+    expect((await get("/_stoneware/styles-a.css?v=2")).status).toBe(200);
+  });
+
+  test("it leaves through the same exit as everything else", async () => {
+    // Security headers and the CSP are applied at one point for every response;
+    // a new branch that returned early would have skipped them.
+    const response = await get("/_stoneware/styles-a.css");
+    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(response.headers.get("Content-Security-Policy")).toBeTruthy();
+    expect(response.headers.get("Cache-Control")).toContain("immutable");
   });
 });

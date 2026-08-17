@@ -95,6 +95,21 @@ export interface CreateAppOptions {
   /** Hashed stylesheet URL, inlined by the same build for the same reason. */
   stylesheet?: string | null;
   /**
+   * Client chunks carried inside the bundle, base64 by filename.
+   *
+   * Set by `build --target vercel`. The chunks normally live on disk under
+   * `.stoneware/static/` and are found through a path computed at runtime,
+   * which a platform that builds a function by tracing imports cannot see - so
+   * on those platforms they are never uploaded, every page answers 200, and
+   * every stylesheet and island chunk on it answers 404.
+   *
+   * Copying them into `public/` was tried first and is not enough: Vercel
+   * collects `public/` from the repository, so a directory the build creates is
+   * not in the snapshot. Carrying them as a value is the only form that cannot
+   * be lost, because tracing follows a static import by definition.
+   */
+  inlineAssets?: Record<string, string>;
+  /**
    * Extra markup injected before `</body>` on every HTML page. The dev server
    * uses this for its live-reload client; production never sets it.
    */
@@ -137,6 +152,17 @@ export async function createApp(
     manifest: options.routeManifest,
   });
   await router.init();
+
+  /**
+   * The inlined chunks, as a Map rather than the plain object they arrive in.
+   *
+   * The key comes straight off the URL, and a plain object answers for keys
+   * nobody put there: `assets["toString"]` is a function, not undefined, so
+   * `/_stoneware/toString` passed the presence check and handed a function to
+   * a base64 decoder - an unauthenticated request turning into a 500. A Map
+   * has no inherited keys, so the question "was this built" has one answer.
+   */
+  const inlineAssets = new Map(Object.entries(options.inlineAssets ?? {}));
 
   let islandRegistry = new Map<Component<any>, string>();
   let islandManifest: IslandManifest = {};
@@ -354,6 +380,14 @@ export async function createApp(
     // fallthrough never runs.
     if (url.pathname.startsWith(`${CLIENT_ASSET_PREFIX}/`)) {
       trace.kind = "asset";
+      const name = url.pathname.slice(CLIENT_ASSET_PREFIX.length + 1);
+
+      // Before the disk, when present. A build that inlined these did so
+      // because the directory will not be there, and asking the filesystem
+      // first would spend a failed stat on every asset request to learn that.
+      const inlined = inlineAssets.get(name);
+      if (inlined !== undefined) return inlineAssetResponse(name, inlined, dev);
+
       const chunk = await serveStaticIfExists(
         request,
         staticDir,
@@ -813,6 +847,48 @@ export function safeJoin(
   }
 
   return target;
+}
+
+/**
+ * Content types for the files a client build emits.
+ *
+ * Small and closed on purpose: this serves the framework's own output, which is
+ * JavaScript, CSS, source maps, and whatever a stylesheet pulled in beside them
+ * through `asset: "[name]-[hash].[ext]"`. Anything unrecognised is served as
+ * bytes rather than guessed at - a wrong `Content-Type` with `nosniff` set is
+ * worse than none.
+ */
+const ASSET_TYPES: Record<string, string> = {
+  js: "text/javascript; charset=utf-8",
+  mjs: "text/javascript; charset=utf-8",
+  css: "text/css; charset=utf-8",
+  map: "application/json; charset=utf-8",
+  json: "application/json; charset=utf-8",
+  svg: "image/svg+xml",
+  woff2: "font/woff2",
+  woff: "font/woff",
+  ttf: "font/ttf",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  avif: "image/avif",
+  ico: "image/x-icon",
+};
+
+/** Serve a chunk the build carried inside the bundle. */
+function inlineAssetResponse(name: string, base64: string, dev: boolean): Response {
+  const extension = name.slice(name.lastIndexOf(".") + 1).toLowerCase();
+
+  return new Response(Buffer.from(base64, "base64"), {
+    headers: {
+      "Content-Type": ASSET_TYPES[extension] ?? "application/octet-stream",
+      // Content-hashed filenames, so these can never change under the name.
+      "Cache-Control": dev ? "no-store" : "public, max-age=31536000, immutable",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
 }
 
 /**

@@ -17,6 +17,7 @@
  */
 
 import { mkdir, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { basename, join, relative, resolve } from "node:path";
 import { buildIslands, buildStyles } from "../build.ts";
 import { findConfigFile, loadConfigFile, resolveConfig } from "../config.ts";
@@ -31,7 +32,7 @@ export interface BuildResult {
   islandSizes: { name: string; bytes: number }[];
 }
 
-export async function build(root: string): Promise<BuildResult> {
+export async function build(root: string, options: BuildOptions = {}): Promise<BuildResult> {
   const userConfig = await loadConfigFile(root);
   const config = resolveConfig({ ...userConfig, root }, false);
 
@@ -94,6 +95,9 @@ export async function build(root: string): Promise<BuildResult> {
       // reason the manifest is inlined - and because a config value can be a
       // function (`observe`), which no serialised form would carry.
       configPath: await findConfigFile(root),
+      // Only when the target needs it: a bundle that ships beside its own
+      // directory should not carry a second copy of every chunk.
+      inlineAssets: options.inlineAssets ? await inlineClientAssets(staticDir) : null,
     }),
   );
 
@@ -155,6 +159,52 @@ interface EntrySourceOptions {
   stylesheet: string | null;
   /** Absolute path to `stoneware.config.ts`, or null if the project has none. */
   configPath: string | null;
+  /**
+   * Client chunks carried inside the bundle, base64 by filename.
+   *
+   * Only for targets that ship a traced function. See `inlineClientAssets`.
+   */
+  inlineAssets: Record<string, string> | null;
+}
+
+export interface BuildOptions {
+  /**
+   * Carry the built client chunks inside the server bundle.
+   *
+   * The fifth instance of the same lesson, and the one that finally forced the
+   * general fix. The chunks live under `.stoneware/static/` and are served from
+   * a path computed at runtime, which a platform that traces imports cannot
+   * see. Copying them into `public/` was tried first and does not work on
+   * Vercel either: `public/` is collected from the repository, so a directory
+   * the build creates is never in the snapshot - and it is gitignored build
+   * output, so committing it is not an answer.
+   *
+   * Inlining is the one form that cannot be lost, because tracing follows a
+   * static import by definition. It costs bundle size, so it is opt-in and set
+   * only by `--target vercel`; a VPS or container ships the directory and needs
+   * none of this.
+   */
+  inlineAssets?: boolean;
+}
+
+/**
+ * Read the built client chunks as base64, keyed by filename.
+ *
+ * base64 rather than text because a stylesheet can pull a font or an image into
+ * the same directory through `asset: "[name]-[hash].[ext]"`, and those are
+ * binary. The 33% overhead is worth not having a second code path that decides
+ * which files are safe to embed as strings.
+ */
+export async function inlineClientAssets(staticDir: string): Promise<Record<string, string>> {
+  const assets: Record<string, string> = {};
+  if (!existsSync(staticDir)) return assets;
+
+  const glob = new Bun.Glob("**/*");
+  for await (const name of glob.scan({ cwd: staticDir, onlyFiles: true })) {
+    const bytes = await Bun.file(join(staticDir, name)).bytes();
+    assets[name.replace(/\\/g, "/")] = Buffer.from(bytes).toString("base64");
+  }
+  return assets;
 }
 
 /**
@@ -227,6 +277,12 @@ function serverEntrySource(options: EntrySourceOptions): string {
     "// so reading these from disk is what left them behind on Vercel.",
     `const islandManifest = ${JSON.stringify(options.manifest)};`,
     `const stylesheet = ${JSON.stringify(options.stylesheet)};`,
+    // Carried as values for the same reason, and for the strongest version of
+    // it: on a platform that traces imports these files are not merely read
+    // through a computed path, they are never uploaded at all.
+    options.inlineAssets === null
+      ? "const inlineAssets = undefined;"
+      : `const inlineAssets = ${JSON.stringify(options.inlineAssets)};`,
     "",
     options.configPath === null
       ? "const userConfig = {};"
@@ -242,6 +298,7 @@ function serverEntrySource(options: EntrySourceOptions): string {
     "    routeManifest,",
     "    islandManifest,",
     "    stylesheet,",
+    "    inlineAssets,",
     "  },",
     ");",
     "",
