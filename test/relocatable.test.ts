@@ -21,6 +21,7 @@ import { build } from "../src/cli/build.ts";
 import type { BuildResult } from "../src/cli/build.ts";
 import { createApp } from "../src/server.ts";
 import { Router, scanRoutes } from "../src/router.ts";
+import { emitVercel } from "../src/cli/vercel.ts";
 
 const FIXTURE_ROOT = join(import.meta.dir, "fixture");
 
@@ -321,5 +322,109 @@ describe("the server bundle is compact but still debuggable", () => {
   test("a source map is still emitted and linked", async () => {
     expect(bundleText).toContain("sourceMappingURL");
     expect(await Bun.file(join(buildDir, ".stoneware", "server.js.map")).exists()).toBe(true);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The client assets have to reach the platform, not only the build directory.
+ *
+ * The last member of the same family. The server locates island chunks and the
+ * stylesheet under `.stoneware/static/` - a path it computes at runtime - and a
+ * platform that builds a function by tracing imports cannot see a computed
+ * path. The bundle arrives, the assets do not.
+ *
+ * The failure shape is what makes it worth pinning: every page answers 200 with
+ * correct markup, and every stylesheet and island chunk on it 404s. The site
+ * looks deployed and arrives unstyled and inert, which reads as a CSS bug
+ * rather than a missing file.
+ *
+ * Lives in this file rather than its own because it needs a real build, and two
+ * concurrent `Bun.build` calls race on Windows reading signals-core.
+ */
+describe("client assets reach a platform that ships only what it traced", () => {
+  const traced = join(import.meta.dir, "..", ".vercel-assets-traced");
+  let emitted: Awaited<ReturnType<typeof emitVercel>>;
+  let base = "";
+
+  beforeAll(async () => {
+    emitted = await emitVercel(buildDir);
+
+    // Keep only what import tracing can follow, plus public/ - which the
+    // platform ships because it is a platform convention, not a computed path.
+    await rm(traced, { recursive: true, force: true });
+    await mkdir(join(traced, ".stoneware"), { recursive: true });
+    await cp(join(buildDir, ".stoneware", "server.js"), join(traced, ".stoneware", "server.js"));
+    await cp(join(buildDir, "server.js"), join(traced, "server.js"));
+    await cp(join(buildDir, "stoneware.config.ts"), join(traced, "stoneware.config.ts"));
+    await cp(join(buildDir, "public"), join(traced, "public"), { recursive: true });
+
+    process.env.PORT = "4763";
+    await import(Bun.pathToFileURL(join(traced, ".stoneware", "server.js")).href);
+    await Bun.sleep(400);
+    base = "http://localhost:4763";
+  });
+
+  afterAll(async () => {
+    await rm(traced, { recursive: true, force: true });
+  });
+
+  test("the chunks are copied where the platform will ship them", () => {
+    expect(emitted.copiedAssets).toBeGreaterThan(0);
+    expect(existsSync(join(buildDir, "public", "_stoneware"))).toBe(true);
+  });
+
+  test("the copy is emptied rather than merged into", async () => {
+    // Filenames carry a content hash, so merging would accumulate every chunk
+    // from every previous build and grow the deployment forever.
+    const stale = join(buildDir, "public", "_stoneware", "Counter-fromlastbuild.js");
+    await Bun.write(stale, "// left over");
+
+    await emitVercel(buildDir);
+    expect(existsSync(stale)).toBe(false);
+  });
+
+  test("the build directory really is absent from what was traced", () => {
+    expect(existsSync(join(traced, ".stoneware", "static"))).toBe(false);
+    expect(existsSync(join(traced, ".stoneware", "server.js"))).toBe(true);
+  });
+
+  test("the stylesheet the page links to actually answers", async () => {
+    // The regression: 200 for the page, 404 for this, and a site that arrives
+    // unstyled with nothing in the log to say why.
+    const html = await (await fetch(`${base}/`)).text();
+    const href = html.match(/href="(\/_stoneware\/styles-[^"]+\.css)"/)?.[1];
+    expect(href).toBeDefined();
+
+    const css = await fetch(base + href!);
+    expect(css.status).toBe(200);
+    expect(await css.text()).toContain("{");
+  });
+
+  test("the island chunk the page references actually answers", async () => {
+    const html = await (await fetch(`${base}/`)).text();
+    const src = html.match(/src="(\/_stoneware\/[^"]+\.js)"/)?.[1];
+    expect(src).toBeDefined();
+    expect((await fetch(base + src!)).status).toBe(200);
+  });
+
+  test("hashed assets keep their immutable caching through the fallback", async () => {
+    // Serving them from public/ must not quietly downgrade a year of caching
+    // into a revalidation on every request.
+    const html = await (await fetch(`${base}/`)).text();
+    const href = html.match(/href="(\/_stoneware\/styles-[^"]+\.css)"/)?.[1]!;
+
+    const cache = (await fetch(base + href)).headers.get("cache-control");
+    expect(cache).toContain("immutable");
+    expect(cache).toContain("max-age=31536000");
+  });
+
+  test("an asset that exists nowhere is still a 404", async () => {
+    expect((await fetch(`${base}/_stoneware/no-such-chunk.js`)).status).toBe(404);
+  });
+
+  test("traversal out of the asset directory is still refused", async () => {
+    expect((await fetch(`${base}/_stoneware/..%2F..%2Fstoneware.config.ts`)).status).toBe(404);
   });
 });

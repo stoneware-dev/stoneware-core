@@ -344,23 +344,41 @@ export async function createApp(
 
   async function handleRequest(request: Request, url: URL, trace: Trace): Promise<Response> {
     // Built client chunks.
+    //
+    // A miss falls through to `public/` rather than answering 404 here. A
+    // deploy target may have copied these assets there precisely because the
+    // build output directory does not survive the trip - `build --target
+    // vercel` does exactly that - and `public/_stoneware/x.js` is served at
+    // `/_stoneware/x.js`, which is the URL the markup already points at. Where
+    // the assets are in their normal place this branch answers first and the
+    // fallthrough never runs.
     if (url.pathname.startsWith(`${CLIENT_ASSET_PREFIX}/`)) {
       trace.kind = "asset";
-      return serveStatic(
+      const chunk = await serveStaticIfExists(
+        request,
         staticDir,
-        url.pathname.slice(CLIENT_ASSET_PREFIX.length + 1),
+        url.pathname.slice(CLIENT_ASSET_PREFIX.length),
         dev,
         config.followSymlinks,
+        // Hashed filenames, so these are immutable rather than revalidated.
+        true,
       );
+      if (chunk) return chunk;
     }
 
     // Anything in public/ is served as-is.
+    //
+    // A client chunk that fell through to here is still content-hashed, so it
+    // keeps the immutable caching it would have had from the build directory.
+    // Without this the vercel target's copy would be revalidated on every
+    // request - correct, but a year of caching thrown away for nothing.
     const asset = await serveStaticIfExists(
       request,
       config.publicDir,
       url.pathname,
       dev,
       config.followSymlinks,
+      url.pathname.startsWith(`${CLIENT_ASSET_PREFIX}/`),
     );
     if (asset) {
       trace.kind = "asset";
@@ -797,28 +815,6 @@ export function safeJoin(
   return target;
 }
 
-async function serveStatic(
-  rootDir: string,
-  relativePath: string,
-  dev: boolean,
-  followSymlinks: boolean,
-): Promise<Response> {
-  const target = safeJoin(rootDir, relativePath, followSymlinks);
-  if (!target) return new Response("Not Found", { status: 404 });
-
-  const file = Bun.file(target);
-  if (!(await file.exists())) return new Response("Not Found", { status: 404 });
-
-  return new Response(file, {
-    headers: {
-      // Client chunks carry a content hash in their filename, so they are
-      // immutable by construction - but only once they stop changing per build.
-      "Cache-Control": dev ? "no-store" : "public, max-age=31536000, immutable",
-      "X-Content-Type-Options": "nosniff",
-    },
-  });
-}
-
 /**
  * Serve a file from `public/`, if one is there.
  *
@@ -842,6 +838,11 @@ async function serveStaticIfExists(
   pathname: string,
   dev: boolean,
   followSymlinks: boolean,
+  /**
+   * The filename carries a content hash, so the bytes can never change under
+   * it. Those are cacheable for a year; everything else has to revalidate.
+   */
+  immutable = false,
 ): Promise<Response | null> {
   if (pathname === "/" || pathname.endsWith("/")) return null;
 
@@ -850,6 +851,15 @@ async function serveStaticIfExists(
 
   const file = Bun.file(target);
   if (!(await file.exists())) return null;
+
+  if (immutable) {
+    return new Response(file, {
+      headers: {
+        "Cache-Control": dev ? "no-store" : "public, max-age=31536000, immutable",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  }
 
   const headers: Record<string, string> = {
     "Cache-Control": dev ? "no-store" : "no-cache",

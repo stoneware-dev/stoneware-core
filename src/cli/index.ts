@@ -153,6 +153,10 @@ async function main(): Promise<void> {
         console.log(`  target   vercel`);
         console.log(`  entry    ${relative(args.root, vercel.entrypoint).replace(/\\/g, "/")}`);
         if (vercel.wroteConfig) console.log(`  config   vercel.json`);
+        // Named because it writes into the project's own public/ directory,
+        // and because the deploy is broken without it in a way that looks like
+        // a CSS bug rather than a missing file.
+        console.log(`  assets   ${vercel.copiedAssets} file(s) copied to public/_stoneware/`);
         if (vercel.configNote) console.warn(`[stoneware] ${vercel.configNote}`);
       }
       break;

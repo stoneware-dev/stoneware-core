@@ -18,7 +18,12 @@ node_modules/
 .hot-reload-test/
 .no-output-at-all/
 .no-output-either/
+.vercel-assets-test/
+.vercel-assets-traced/
 .vercelsim/
+# Client chunks copied by `build --target vercel` in the scratch projects.
+public/_stoneware/
+
 # Vercel's own local artefacts, if the CLI is ever run here.
 .vercel/
 

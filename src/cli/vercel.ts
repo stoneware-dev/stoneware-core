@@ -16,7 +16,11 @@
  * build-here-run-there deployment, not only this one.
  */
 
+import { cp, mkdir, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { CLIENT_ASSET_PREFIX } from "../build.ts";
+import { loadConfigFile, resolveConfig } from "../config.ts";
 
 /** Where Vercel's Bun preset looks for the entrypoint. Root or `src/`, `server.*`. */
 const ENTRYPOINT = "server.js";
@@ -27,6 +31,49 @@ export interface VercelResult {
   entrypoint: string;
   wroteConfig: boolean;
   configNote: string | null;
+  /** Files copied into `public/` so the platform ships them. */
+  copiedAssets: number;
+}
+
+/**
+ * Put the built client assets somewhere the platform will actually ship.
+ *
+ * This is the last member of a family of bugs that took three releases to work
+ * through, and the one that survived them. The server finds island chunks and
+ * the stylesheet under `.stoneware/static/`, a path it computes at runtime -
+ * and a platform that builds a function by tracing imports cannot see a path
+ * that is computed. The bundle arrives, the assets do not, and the result is
+ * the most confusing shape of all: every page renders with status 200, and
+ * every stylesheet and island chunk on it 404s. The site looks deployed and
+ * arrives unstyled and inert.
+ *
+ * `public/` is the fix because it is not a Stoneware convention - it is a
+ * platform one. Vercel serves it from the CDN as static files, so those
+ * requests never reach the function at all, which is both correct and cheaper
+ * than answering them from a serverless invocation.
+ *
+ * Emptied before copying rather than merged into. The filenames carry content
+ * hashes, so a merge would accumulate every chunk from every previous build
+ * and quietly grow the deployment forever.
+ */
+async function copyClientAssets(root: string): Promise<number> {
+  const userConfig = await loadConfigFile(root);
+  const config = resolveConfig({ ...userConfig, root }, false);
+
+  const from = join(config.outDir, "static");
+  if (!existsSync(from)) return 0;
+
+  // Mirrors the URL the pages already reference: `public/_stoneware/x.js` is
+  // served at `/_stoneware/x.js`, which is exactly where the markup points.
+  const to = join(config.publicDir, CLIENT_ASSET_PREFIX.replace(/^\//, ""));
+  await rm(to, { recursive: true, force: true });
+  await mkdir(to, { recursive: true });
+  await cp(from, to, { recursive: true });
+
+  const glob = new Bun.Glob("**/*");
+  let count = 0;
+  for await (const _ of glob.scan({ cwd: to, onlyFiles: true })) count++;
+  return count;
 }
 
 /**
@@ -93,6 +140,8 @@ export async function emitVercel(root: string): Promise<VercelResult> {
   const entrypoint = join(root, ENTRYPOINT);
   await Bun.write(entrypoint, entrypointSource());
 
+  const copiedAssets = await copyClientAssets(root);
+
   const configPath = join(root, VERCEL_CONFIG);
   if (await Bun.file(configPath).exists()) {
     const existing = await Bun.file(configPath).text();
@@ -112,6 +161,7 @@ export async function emitVercel(root: string): Promise<VercelResult> {
 
     return {
       entrypoint,
+      copiedAssets,
       wroteConfig: false,
       configNote:
         missing.length === 0 ? null : `${VERCEL_CONFIG} needs: ${missing.join("; ")}.`,
@@ -119,5 +169,5 @@ export async function emitVercel(root: string): Promise<VercelResult> {
   }
 
   await Bun.write(configPath, defaultConfig());
-  return { entrypoint, wroteConfig: true, configNote: null };
+  return { entrypoint, copiedAssets, wroteConfig: true, configNote: null };
 }
