@@ -16,12 +16,17 @@ Measured on this repo's own documentation site, in production:
 | A page with no islands | **0 bytes, no script tag** |
 | Runtime dependencies | **1** (`@preact/signals-core`) |
 
-```sh
+
+## Try Stoneware in 60 seconds
+
+```bash
 bunx create-stoneware my-site   # npx create-stoneware my-site works too
 cd my-site
 bun install
 bun run dev
 ```
+
+Then open http://localhost:3000.
 
 Scaffolding runs on plain Node, so `npx` works before Bun is installed. Everything after that — the
 dev server, the build — runs on Bun, and `stoneware` says so with an install link if Bun is missing.
