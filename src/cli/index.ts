@@ -4,6 +4,7 @@
  */
 
 import { join, relative, resolve } from "node:path";
+import { cpus } from "node:os";
 import { build, describeBuild } from "./build.ts";
 import { dev } from "./dev.ts";
 import { exportSite } from "./export.ts";
@@ -26,6 +27,8 @@ Usage
 Options
   --root <dir>     Project directory (default: current directory)
   --port <n>       Port to listen on (default: 3000, or $PORT)
+  --workers <n>    Processes sharing the port, or "auto" for one per core.
+                   Linux only; ignored elsewhere with a reason (default: 1)
   --target <t>     Deployment target for \`build\`: node (default) or vercel
   -h, --help       Show this message
       --open       Open a browser when the dev server starts
@@ -40,6 +43,7 @@ interface Args {
   command: string | undefined;
   root: string;
   port: string | undefined;
+  workers: string | undefined;
   out: string | undefined;
   target: string | undefined;
   help: boolean;
@@ -53,6 +57,7 @@ function parseArgs(argv: string[]): Args {
     command: undefined,
     root: process.cwd(),
     port: undefined,
+    workers: undefined,
     out: undefined,
     target: undefined,
     help: false,
@@ -69,6 +74,7 @@ function parseArgs(argv: string[]): Args {
     else if (arg === "--strict") args.strict = true;
     else if (arg === "--root") args.root = resolve(argv[++index] ?? ".");
     else if (arg === "--port") args.port = argv[++index];
+    else if (arg === "--workers") args.workers = argv[++index];
     else if (arg === "--out") args.out = argv[++index];
     else if (arg === "--target") args.target = argv[++index];
     else if (!arg.startsWith("-") && args.command === undefined) args.command = arg;
@@ -106,6 +112,10 @@ async function main(): Promise<void> {
 
   // The CLI flag wins over stoneware.config.ts, which wins over the default.
   if (args.port) process.env.PORT = args.port;
+
+  // Read back by resolveConfig through WEB_CONCURRENCY, which is the same
+  // channel the hosting platforms use. One way in beats a second one.
+  if (args.workers) process.env.WEB_CONCURRENCY = args.workers === "auto" ? String(cpus().length) : args.workers;
 
   switch (args.command) {
     case "dev":

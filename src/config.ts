@@ -35,6 +35,21 @@ export interface StonewareConfig {
   port?: number;
   hostname?: string;
 
+  /**
+   * How many processes serve, sharing one port.
+   *
+   * One by default. `"auto"` uses every core. More than one requires Linux —
+   * Windows and macOS accept the underlying socket option and then send every
+   * connection to a single process, so on those platforms the count is forced
+   * back to 1 and the reason is printed rather than swallowed.
+   *
+   * Workers share nothing. A counter or cache in a module-level variable
+   * becomes one copy per worker, and consecutive requests from one visitor may
+   * be answered by different ones. Anything that has to be consistent across
+   * them belongs in a database, or in the environment as the CSRF secret is.
+   */
+  workers?: number | "auto";
+
   routesDir?: string;
   islandsDir?: string;
   publicDir?: string;
@@ -169,11 +184,27 @@ export interface CORSConfig {
   maxAge?: number;
 }
 
+/**
+ * `WEB_CONCURRENCY`, as set by Heroku, Render and Railway.
+ *
+ * Ignored rather than rejected when it is not a positive integer: it comes from
+ * a platform, not from the project, and refusing to boot because a host set
+ * something unexpected would trade a working single process for an outage.
+ */
+function parseWorkers(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) return undefined;
+  return parsed;
+}
+
 /** Fully-resolved configuration used internally. Every path is absolute. */
 export interface ResolvedConfig {
   root: string;
   port: number;
   hostname: string;
+  /** Requested worker count. What is actually run is decided at serve time. */
+  workers: number | "auto";
   routesDir: string;
   islandsDir: string;
   publicDir: string;
@@ -356,6 +387,10 @@ export function resolveConfig(config: StonewareConfig = {}, dev = false): Resolv
     // a proxy on another interface, so binding to localhost makes the service
     // unreachable and the platform's health check fails with no useful error.
     hostname: config.hostname ?? Bun.env.HOST ?? (dev ? "localhost" : "0.0.0.0"),
+    // WEB_CONCURRENCY is what Heroku, Render and Railway already set to say how
+    // many processes a plan's memory allows. Reading it means a deploy scales
+    // without a config change, and an explicit setting still wins.
+    workers: config.workers ?? parseWorkers(Bun.env.WEB_CONCURRENCY) ?? 1,
     routesDir: resolve(root, config.routesDir ?? "routes"),
     islandsDir: resolve(root, config.islandsDir ?? "islands"),
     publicDir: resolve(root, config.publicDir ?? "public"),

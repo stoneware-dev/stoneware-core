@@ -95,10 +95,28 @@ export interface ListenOptions<T = undefined> {
   websocket?: WebSocketHandler<T>;
   /** Walk to the next free port when one is taken. Development only. */
   allowPortFallback?: boolean;
+  /**
+   * Bind a port another process may already hold, so the kernel can spread
+   * connections across all of them.
+   *
+   * Only ever set when clustering, and clustering only happens on Linux — see
+   * cluster.ts for what this option does on the platforms where it does not
+   * work. It is incompatible with `allowPortFallback` by construction: sharing
+   * a port is the point, so "the port is taken" is no longer a reason to move.
+   */
+  reusePort?: boolean;
 }
 
 export async function listen<T = undefined>(options: ListenOptions<T>): Promise<Bun.Server<T>> {
   const { allowPortFallback = false, ...serveOptions } = options;
+
+  if (allowPortFallback && options.reusePort === true) {
+    // Both are about what to do when the port is busy, and they want opposite
+    // things. Silently picking one would make a clustered dev server bind a
+    // different port per worker and look like it was working.
+    throw new Error("listen(): allowPortFallback and reusePort cannot both be set.");
+  }
+
   const attempts = allowPortFallback ? MAX_ATTEMPTS : 1;
   const last = options.port + attempts - 1;
 

@@ -124,3 +124,51 @@ describe("production", () => {
     ).rejects.toThrow();
   });
 });
+
+describe("reusePort", () => {
+  test("cannot be combined with allowPortFallback", async () => {
+    // They want opposite things when the port is busy: fallback moves to the
+    // next port, reusePort deliberately shares the one it was given. Silently
+    // picking one would make a clustered server bind a different port per
+    // worker and look like it was working.
+    expect(
+      listen({
+        port: openPort(),
+        hostname: "127.0.0.1",
+        fetch: () => new Response("x"),
+        allowPortFallback: true,
+        reusePort: true,
+      }),
+    ).rejects.toThrow(/cannot both be set/i);
+  });
+
+  test("is passed through to Bun.serve", async () => {
+    // Whether it load-balances is the kernel's business and Linux-only; that
+    // this reaches the socket at all is the framework's.
+    const port = openPort();
+    const server = track(
+      await listen({
+        port,
+        hostname: "127.0.0.1",
+        fetch: () => new Response("shared"),
+        reusePort: true,
+      }),
+    );
+
+    expect(server.port).toBe(port);
+    const response = await fetch(`http://127.0.0.1:${port}/`);
+    expect(await response.text()).toBe("shared");
+  });
+
+  test("each option is still fine on its own", async () => {
+    const fallback = track(
+      await listen({
+        port: openPort(),
+        hostname: "127.0.0.1",
+        fetch: () => new Response("a"),
+        allowPortFallback: true,
+      }),
+    );
+    expect(fallback.port).toBeGreaterThan(0);
+  });
+});

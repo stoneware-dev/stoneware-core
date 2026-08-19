@@ -9,6 +9,7 @@
 
 import { join, resolve, sep } from "node:path";
 import { existsSync, readdirSync, realpathSync } from "node:fs";
+import { cpus } from "node:os";
 import {
   CLIENT_ASSET_PREFIX,
   ISLAND_MANIFEST_FILE,
@@ -28,6 +29,8 @@ import { isNotFound } from "./not-found.ts";
 import { notify } from "./observe.ts";
 import type { Locals } from "./middleware.ts";
 import { listen } from "./listen.ts";
+import { isWorker, resolveWorkerCount, supervise } from "./cluster.ts";
+import type { Supervisor } from "./cluster.ts";
 import { requestURL } from "./url.ts";
 import type { RequestKind } from "./observe.ts";
 import type { IslandManifest } from "./build.ts";
@@ -1345,6 +1348,15 @@ export interface ServeResult {
    * data; this server configures no `websocket` handler, so there is none.)
    */
   server: ReturnType<typeof Bun.serve>;
+  /**
+   * Processes serving this port, including this one.
+   *
+   * 1 unless clustering was both asked for and possible, so a caller that wants
+   * to log it does not have to re-derive the platform rules.
+   */
+  workers: number;
+  /** Present only in the primary of a cluster. Call `stop()` to end workers. */
+  supervisor: Supervisor | null;
 }
 
 export async function serve(
@@ -1353,6 +1365,18 @@ export async function serve(
 ): Promise<ServeResult> {
   const app = await createApp(userConfig, options);
 
+  // Decided before binding, because it decides how the socket is bound. A
+  // worker never asks: it was started by a primary that already asked, and a
+  // worker that spawned workers of its own would fork exponentially.
+  const workers = isWorker()
+    ? 1
+    : resolveWorkerCount({
+        configured: app.config.workers,
+        dev: app.config.dev,
+        platform: process.platform,
+        cpuCount: cpus().length,
+      });
+
   const server = await listen({
     // No fallback here on purpose: a platform routes traffic to the port it
     // assigned, so binding a different one yields a service that looks healthy
@@ -1360,9 +1384,17 @@ export async function serve(
     port: app.config.port,
     hostname: app.config.hostname,
     fetch: (request) => app.fetch(request),
+    // Set in the workers too, or the primary holds the port alone and every
+    // worker fails to bind.
+    reusePort: workers > 1 || isWorker(),
   });
 
-  return { app, server };
+  // After the primary is listening. Starting them first would have each worker
+  // race the primary for a port nothing holds yet, and a worker that loses
+  // exits before the primary has bound anything to share.
+  const supervisor = workers > 1 ? supervise({ workers }) : null;
+
+  return { app, server, workers, supervisor };
 }
 
 /**
