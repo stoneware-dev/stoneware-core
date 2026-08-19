@@ -602,11 +602,34 @@ export async function createApp(
       // either: a fresh token on every render means the body changes each time.
       headers.set("Cache-Control", "private, no-store");
     } else {
-      // Identical for every visitor. `no-cache` means "revalidate", not "do not
-      // store", so a CDN or browser keeps the bytes and a repeat request costs
-      // one 304 rather than a re-render.
+      // `no-cache` means "revalidate", not "do not store", so a CDN or browser
+      // keeps the bytes and a repeat request costs one 304 rather than a
+      // re-render.
       headers.set("Cache-Control", "public, no-cache");
       headers.set("ETag", `W/"${Bun.hash(html).toString(16)}"`);
+
+      // What a shared cache must key on as well as the URL.
+      //
+      // `personalized` means "this render issued a CSRF token" - it does not
+      // mean "this page is the same for everyone". A route that reads a session
+      // cookie or an Authorization header personalizes its output without ever
+      // touching CSRF, and until this header existed such a page was published
+      // as `public` with nothing saying what it depended on.
+      //
+      // What that costs was measured against a shared cache that does not
+      // forward cookies to the origin, which is the default on every major CDN
+      // because forwarding them defeats caching: three logged-in visitors were
+      // each served the anonymous page. A cache that also disregards `no-cache`
+      // would go further and serve one visitor's page to another - `public` is
+      // what grants it permission to store the page at all.
+      //
+      // Sent on every page rather than only where a cookie was read. `Vary`
+      // describes the resource, not the request: a response cached from a
+      // request that carried no cookie would otherwise be reused for one that
+      // does. Static assets deliberately do not get this - they are bytes from
+      // disk, identical for every visitor, and fragmenting a CDN's key for them
+      // would cost reuse for no correctness.
+      headers.set("Vary", "Cookie, Authorization");
     }
 
     const etag = headers.get("ETag");
