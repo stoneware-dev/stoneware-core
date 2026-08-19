@@ -128,7 +128,29 @@ stoneware start   Run the production server bundle
 stoneware export  Prerender every page to static HTML
 
 stoneware build --target vercel   Also emit Vercel's Bun-preset entrypoint
+stoneware start --workers 4       Serve from four processes sharing one port
 ```
+
+## Serving from more than one process
+
+One process by default. `--workers N`, `WEB_CONCURRENCY=N`, or `workers: N` in
+`stoneware.config.ts` runs N processes behind a shared port, and `"auto"` uses one per core.
+
+```sh
+stoneware start --workers 4
+```
+
+**Linux only, and it says so.** `reusePort` is accepted by `Bun.serve` everywhere and only
+load-balances on Linux — on Windows two processes bind the same port and the first receives every
+connection. On any platform where that is true the count falls back to 1 and prints why, because
+N processes serving from one of them is worse than one process, and invisible.
+
+Workers share nothing. A counter or cache in a module-level variable becomes one copy per worker,
+and consecutive requests from one visitor may be answered by different ones. The CSRF secret is
+unaffected because it comes from the environment and is therefore identical in every worker —
+which is exactly why it has to keep coming from there.
+
+## Requirements
 
 ## Requirements
 
@@ -152,9 +174,13 @@ bun test
 
 ## Status
 
-v0.1. Deliberately **not** included yet: streaming SSR, resumability, multi-framework islands,
+v0.2. Deliberately **not** included yet: streaming SSR, resumability, multi-framework islands,
 edge/serverless targets, and a local-first data layer. Each was considered and deferred - see
 `CLAUDE.md`.
+
+Resumability in particular is not on the roadmap and the word is not used loosely here: islands are
+server-rendered and then hydrated, which means the island component runs again on the client. What
+Stoneware does is keep that scoped — a page with no islands executes no client code at all.
 
 ## License
 

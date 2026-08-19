@@ -112,8 +112,8 @@ in `routes/`, it's server-only HTML, no exceptions, no per-file directive needed
 - Any file under `islands/` is:
   1. Server-rendered once for the initial HTML response (so there's no flash of empty content), AND
   2. Bundled separately via `Bun.build()` into its own small client chunk, AND
-  3. Hydrated client-side on load (v0.1: eager hydration only; `client:visible`-style lazy directives
-     are a fast-follow, not launch-blocking).
+  3. Hydrated client-side. Eager by default; `client:visible`, `client:idle` and `client:media`
+     shipped after v0.1 and live in `src/client/lazy.ts`.
 - Inside an island, state is declared with signals:
   ```tsx
   // islands/Counter.stoneware.tsx
@@ -185,8 +185,24 @@ Ship in this order - each step should be independently demoable:
 6. **CLI scaffold + docs**: `create-stoneware`, a README, and one worked example (e.g., a blog with a
    newsletter-signup island) - this is what you show people to get first feedback.
 
-Do not start on lazy hydration directives, multi-framework islands, or anything from Section 3 until
-this list is done and at least one person besides you has run it.
+All six shipped. Lazy hydration directives followed. Do not start on multi-framework islands or
+anything from Section 3 without an explicit go-ahead.
+
+## 14a. Shipped since v0.1
+
+- **Lazy hydration** — `client:visible`, `client:idle`, `client:media`.
+- **`sitemap()` / `sitemapXML()`** (0.2.0). Composable: it owns XML correctness and refuses to guess
+  which of your routes belong in a sitemap, because that is an editorial decision.
+- **Multi-process serving** (0.2.0). `workers` in config, `--workers`, `WEB_CONCURRENCY`. Linux only
+  and it says so: `reusePort` is accepted everywhere and load-balances only on Linux — measured on
+  Windows, where the first process to bind receives every connection. Workers share nothing, which is
+  why the CSRF secret must keep coming from the environment.
+- **Static path index and asset metadata cache** (0.2.0). Halves the framework's per-request cost.
+  It does not measurably change end-to-end throughput, because the framework is roughly a seventh of
+  an HTTP request — do not claim otherwise. The p99 over HTTP is Bun's, not the framework's.
+
+Two measurements worth not re-deriving: `renderToString` is ~21µs for a 14 KB document, and the whole
+framework request path is ~0.07ms in process. Rendering has never been the cost.
 
 ## 15. Testing
 
