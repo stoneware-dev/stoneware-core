@@ -12,6 +12,7 @@ export { Form } from "./form.tsx";
 export { Boundary } from "./boundary.tsx";
 export { Image } from "./image.tsx";
 export { seo } from "./seo.tsx";
+export { sitemap, sitemapXML } from "./sitemap.ts";
 export { notFound, isNotFound } from "./not-found.ts";
 export { requestURL } from "./url.ts";
 export { createApp, serve } from "./server.ts";
@@ -59,5 +60,6 @@ export type {
   RobotsOptions,
   AlternateLink,
 } from "./seo.tsx";
+export type { SitemapEntry, SitemapOptions, ChangeFrequency } from "./sitemap.ts";
 export type { IslandManifest } from "./build.ts";
 export type { RenderResult, CollectedIsland } from "./render.ts";

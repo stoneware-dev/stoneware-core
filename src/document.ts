@@ -36,6 +36,10 @@ export interface DocumentOptions {
   cspMeta?: string | null;
   /** `<link rel="preload">` tags collected during the body render. */
   preloads?: string[];
+  /** Route pattern, used only to name the page in a diagnostic. */
+  route?: string;
+  /** Enables the checks that only catch authoring mistakes. */
+  dev?: boolean;
 }
 
 const DOCTYPE = "<!DOCTYPE html>";
@@ -77,10 +81,27 @@ export function buildDocument(options: DocumentOptions): string {
     // A page that owns its whole document still gets the bundled stylesheet:
     // co-located CSS is collected by the build, so there is no <link> for the
     // author to write and none to forget.
+    //
+    // Unless it has no <head> to put any of it in, which used to be silent. A
+    // route that renders <html><body> and nothing else lost the stylesheet, the
+    // whole of its head() export - title, canonical, Open Graph, JSON-LD - and
+    // every preload, with no output anywhere saying so. The page rendered
+    // unstyled and unindexable and looked like a CSS bug.
+    if (!hasHead(html)) {
+      warnHeadless(options, headExtra, cspTag);
+      return DOCTYPE + "\n" + injectBeforeBodyClose(html, scripts);
+    }
+
     const withCSP = cspTag ? injectAfterHeadOpen(html, cspTag) : html;
     const withHead = headExtra ? injectBeforeHeadClose(withCSP, headExtra) : withCSP;
     return DOCTYPE + "\n" + injectBeforeBodyClose(withHead, scripts);
   }
+
+  // A document that owns its <html> but does not start with it - a comment or
+  // stray text ahead of the tag - is about to be wrapped in a second one. The
+  // output is two nested documents, which is invalid and renders in a way that
+  // sends people looking at their CSS.
+  if (options.dev === true) warnNestedDocument(options, html);
 
   const lang = options.lang ?? "en";
 
@@ -108,6 +129,70 @@ function hasTitle(head: string | undefined): boolean {
 
 function isFullDocument(html: string): boolean {
   return /^\s*(<!DOCTYPE[^>]*>\s*)?<html[\s>]/i.test(html);
+}
+
+function hasHead(html: string): boolean {
+  return /<head[\s>]/i.test(html) && html.toLowerCase().includes("</head>");
+}
+
+/**
+ * Warned-about routes, so a mistake is reported once rather than on every
+ * request. A per-request warning on a page under load is its own outage.
+ */
+const warned = new Set<string>();
+
+function warnOnce(key: string, message: string): void {
+  if (warned.has(key)) return;
+  warned.add(key);
+  console.warn(message);
+}
+
+/** Reset between tests. Not part of the public API. */
+export function resetDocumentWarnings(): void {
+  warned.clear();
+}
+
+/**
+ * A full document with no `<head>` element.
+ *
+ * Reported in production as well as dev, because the consequence is a live page
+ * with no stylesheet and no metadata, and the operator is the person who needs
+ * to know. Naming what was dropped matters more than naming the rule: "your
+ * canonical tag is missing" is actionable, "no head element" is a riddle.
+ */
+function warnHeadless(options: DocumentOptions, headExtra: string, cspTag: string): void {
+  const lost: string[] = [];
+  if (options.stylesheet) lost.push("the bundled stylesheet");
+  if (options.head) lost.push("everything from the route's head() export");
+  if (options.preloads && options.preloads.length > 0) lost.push("preload hints");
+  if (cspTag) lost.push("the Content-Security-Policy meta tag");
+
+  // Nothing to inject means nothing was lost, and a page may legitimately be a
+  // bare <html><body> with no CSS and no metadata.
+  if (lost.length === 0 && headExtra === "") return;
+
+  const where = options.route ?? "a route";
+  warnOnce(
+    `headless:${where}`,
+    `[stoneware] ${where} renders its own <html> but has no <head> element, so ` +
+      `${lost.join(", ")} could not be added and ${lost.length === 1 ? "is" : "are"} missing from the page.\n` +
+      `  Add <head></head> to the document this route returns, or return a fragment ` +
+      `and let Stoneware build the document.`,
+  );
+}
+
+/** A document that owns its `<html>` but does not begin with it. */
+function warnNestedDocument(options: DocumentOptions, html: string): void {
+  if (!/<html[\s>]/i.test(html)) return;
+
+  const where = options.route ?? "a route";
+  warnOnce(
+    `nested:${where}`,
+    `[stoneware] ${where} returns an <html> element that is not the first thing in ` +
+      `its output, so it was treated as a fragment and wrapped in a second document.\n` +
+      `  The result is nested <html> and <body> elements. Remove whatever precedes ` +
+      `the <html> tag — a comment or stray text is the usual cause.`,
+  );
 }
 
 function escapeTitle(title: string): string {

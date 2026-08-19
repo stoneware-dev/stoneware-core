@@ -8,7 +8,7 @@
  */
 
 import { join, resolve, sep } from "node:path";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, realpathSync } from "node:fs";
 import {
   CLIENT_ASSET_PREFIX,
   ISLAND_MANIFEST_FILE,
@@ -169,6 +169,27 @@ export async function createApp(
   let stylesheet: string | null = null;
   let staticDir = join(config.outDir, "static");
 
+  /**
+   * Startup listings of the two served directories, so a request for a path
+   * that is not a file answers without a syscall.
+   *
+   * Never in dev: files are created and deleted while the server runs, and a
+   * listing read at startup would answer 404 for a stylesheet the author just
+   * added. Production directories are fixed at deploy time.
+   */
+  let publicIndex: StaticIndex | null = null;
+  let staticIndex: StaticIndex | null = null;
+
+  const refreshStaticIndexes = () => {
+    if (dev) {
+      publicIndex = null;
+      staticIndex = null;
+      return;
+    }
+    publicIndex = buildStaticIndex(config.publicDir);
+    staticIndex = buildStaticIndex(staticDir);
+  };
+
   async function rebuildIslands(): Promise<void> {
     // The registry maps component identity to island name, so it is needed
     // whether or not the client bundles have to be rebuilt.
@@ -261,6 +282,11 @@ export async function createApp(
 
   await rebuildIslands();
 
+  // After the island build, which is what creates the static directory this
+  // indexes. Building it before would record an empty or missing directory and
+  // answer 404 for every client chunk.
+  refreshStaticIndexes();
+
   const app: StonewareApp = {
     config,
     router,
@@ -284,6 +310,11 @@ export async function createApp(
       if (routes) router.reload();
       if (islands) await rebuildIslands();
       else if (styles) await rebuildStyles();
+
+      // A rebuild rewrites the static directory under new hashed names, so an
+      // index from before it names files that no longer exist. Harmless in dev,
+      // where there is no index, but refresh() is callable in production too.
+      refreshStaticIndexes();
     },
     async fetch(request: Request): Promise<Response> {
       // The public URL, not the internal one. Behind a TLS-terminating proxy the
@@ -396,6 +427,7 @@ export async function createApp(
         config.followSymlinks,
         // Hashed filenames, so these are immutable rather than revalidated.
         true,
+        staticIndex,
       );
       if (chunk) return chunk;
     }
@@ -413,6 +445,7 @@ export async function createApp(
       dev,
       config.followSymlinks,
       url.pathname.startsWith(`${CLIENT_ASSET_PREFIX}/`),
+      publicIndex,
     );
     if (asset) {
       trace.kind = "asset";
@@ -545,6 +578,8 @@ export async function createApp(
       head: rendered.head,
       preloads: [...context.preloads],
       cspMeta: options.embedCSPMeta && config.csp !== false ? config.csp : null,
+      route: route.name,
+      dev,
     });
 
     // Out to the request event. The response is a 200 carrying a fallback, so
@@ -813,6 +848,96 @@ function resolvesInsideRoot(root: string, target: string): boolean {
   return real === realRoot || real.startsWith(realRoot + sep);
 }
 
+/**
+ * The set of paths a served directory actually contains, read once at startup.
+ *
+ * Every page request used to pay a synchronous `existsSync` that was always
+ * going to miss: `public/` holds no file called `/articles/some-slug`, but the
+ * only way to learn that was to ask the filesystem. Measured at 25 concurrent
+ * connections that one blocking call cost about a quarter of the throughput,
+ * because a synchronous syscall on the event loop serialises every request
+ * behind it.
+ *
+ * This is a *negative* index and nothing more. A path that is not in it is
+ * answered as a miss with no syscall; a path that is in it goes through
+ * `safeJoin` and the existence check exactly as before, so every traversal,
+ * symlink and dotfile defence still runs on the path that matters. The index
+ * can only ever cause a 404 where a file was not present at startup — it can
+ * never cause a file to be served that the checks would have refused.
+ *
+ * Not used in dev, where files appear and disappear while the server runs.
+ */
+export interface StaticIndex {
+  has(pathname: string): boolean;
+  /**
+   * Metadata for paths already served once, so a repeat request costs one file
+   * open rather than four stats. Populated on the way out, never at startup —
+   * a directory of ten thousand assets should not pay to stat all of them
+   * because one was requested.
+   */
+  meta: Map<string, StaticMeta>;
+}
+
+/**
+ * Walk a directory into a lookup set.
+ *
+ * Returns null — meaning "ask the filesystem every time" — when the directory
+ * cannot be read, or when anything inside it is a symlink. A link may point at
+ * a directory whose children this walk would not see, and answering 404 for a
+ * file that exists is a worse failure than the syscall this avoids.
+ */
+export function buildStaticIndex(rootDir: string): StaticIndex | null {
+  // Windows matches filenames case-insensitively, so the index has to as well,
+  // or it would answer 404 for a request the filesystem would have served and
+  // dev (which does not use the index) would silently disagree with production.
+  const fold = (value: string) => (process.platform === "win32" ? value.toLowerCase() : value);
+
+  const paths = new Set<string>();
+  let sawSymlink = false;
+
+  const walk = (dir: string, prefix: string): boolean => {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return false;
+    }
+
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) {
+        sawSymlink = true;
+        return false;
+      }
+      const path = `${prefix}/${entry.name}`;
+      if (entry.isDirectory()) {
+        if (!walk(join(dir, entry.name), path)) return false;
+      } else if (entry.isFile()) {
+        paths.add(fold(path));
+      }
+    }
+    return true;
+  };
+
+  if (!existsSync(rootDir)) return { has: () => false, meta: new Map() };
+  if (!walk(rootDir, "")) return null;
+  if (sawSymlink) return null;
+
+  return {
+    meta: new Map<string, StaticMeta>(),
+    has(pathname: string) {
+      let decoded: string;
+      try {
+        decoded = decodeURIComponent(pathname);
+      } catch {
+        // Undecodable is not in the index, but safeJoin owns rejecting it and
+        // says so more precisely. Let it through to be refused properly.
+        return true;
+      }
+      return paths.has(fold(decoded));
+    },
+  };
+}
+
 export function safeJoin(
   rootDir: string,
   relativePath: string,
@@ -919,8 +1044,27 @@ async function serveStaticIfExists(
    * it. Those are cacheable for a year; everything else has to revalidate.
    */
   immutable = false,
+  /**
+   * Startup listing of `rootDir`, when one could be built. A path it does not
+   * contain is answered without touching the filesystem — see buildStaticIndex.
+   */
+  index: StaticIndex | null = null,
 ): Promise<Response | null> {
   if (pathname === "/" || pathname.endsWith("/")) return null;
+
+  // Before safeJoin, because safeJoin is where the blocking stat lives.
+  if (index !== null && !index.has(pathname)) return null;
+
+  // A path served once is served again from what was learned the first time.
+  // Serving a file cost four filesystem round trips — existsSync in safeJoin,
+  // realpathSync for the link check, file.exists(), then size and lastModified
+  // for the validator — which made serving a stylesheet measurably slower than
+  // rendering a page. The security checks are not skipped, they are already
+  // done: nothing reaches this cache without having passed them.
+  const cached = index?.meta.get(pathname);
+  if (cached !== undefined) {
+    return staticResponse(request, Bun.file(cached.target), cached, dev, immutable);
+  }
 
   const target = safeJoin(rootDir, pathname, followSymlinks);
   if (!target) return null;
@@ -928,6 +1072,36 @@ async function serveStaticIfExists(
   const file = Bun.file(target);
   if (!(await file.exists())) return null;
 
+  // Read once. Every access to these goes back to the file handle.
+  const meta: StaticMeta = {
+    target,
+    etag: `W/"${file.size.toString(16)}-${file.lastModified.toString(16)}"`,
+    lastModified: file.lastModified,
+  };
+
+  // Only in production, and only behind an index — the same assumption the
+  // index already makes, that a served directory does not change under a
+  // running server. In dev every request re-reads, so edits show up.
+  if (index !== null && !dev) index.meta.set(pathname, meta);
+
+  return staticResponse(request, file, meta, dev, immutable);
+}
+
+/** What a served file's metadata is remembered as. */
+interface StaticMeta {
+  target: string;
+  etag: string;
+  lastModified: number;
+}
+
+/** Build the response for a file whose metadata is already known. */
+function staticResponse(
+  request: Request,
+  file: Bun.BunFile,
+  meta: StaticMeta,
+  dev: boolean,
+  immutable: boolean,
+): Response {
   if (immutable) {
     return new Response(file, {
       headers: {
@@ -943,11 +1117,11 @@ async function serveStaticIfExists(
   };
 
   if (!dev) {
-    const etag = `W/"${file.size.toString(16)}-${file.lastModified.toString(16)}"`;
+    const etag = meta.etag;
     headers.ETag = etag;
-    headers["Last-Modified"] = new Date(file.lastModified).toUTCString();
+    headers["Last-Modified"] = new Date(meta.lastModified).toUTCString();
 
-    if (isFresh(request, etag, file.lastModified)) {
+    if (isFresh(request, etag, meta.lastModified)) {
       // 304 carries no body, so the response is a few hundred bytes regardless
       // of how large the asset is.
       return new Response(null, { status: 304, headers });

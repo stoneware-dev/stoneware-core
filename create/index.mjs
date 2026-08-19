@@ -285,41 +285,24 @@ Sitemap: \${siteURL("/sitemap.xml")}
 }
 `,
 
-  "routes/sitemap.xml.ts": () => `import type { ActionContext } from "stoneware";
-import { siteURL } from "../lib/site.ts";
+  "routes/sitemap.xml.ts": () => `import { sitemap } from "stoneware";
+import { SITE_URL } from "../lib/site.ts";
 
 /**
- * Add every page you publish here. Generating this list from the same data the
- * pages render is worth doing as soon as there is more than a handful — a
- * sitemap maintained by hand is a sitemap that goes stale.
+ * The pages you want indexed.
+ *
+ * Derive this from the same data the pages render as soon as there is more than
+ * a handful — a list maintained by hand is a list that goes stale, and a
+ * sitemap pointing at pages that 404 is worse than no sitemap at all:
+ *
+ *   import { POSTS } from "../lib/posts.ts";
+ *   ...POSTS.map((post) => ({ url: \`/blog/\${post.slug}\`, lastModified: post.published }))
+ *
+ * sitemap() owns the parts that are easy to get wrong: XML escaping, absolute
+ * URLs, date formats, and the value ranges the schema allows.
  */
-const PATHS = ["/"];
-
-export function GET(_context: ActionContext): Response {
-  const urls = PATHS.map((path) => \`  <url><loc>\${escapeXML(siteURL(path))}</loc></url>\`);
-
-  const body = \`<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-\${urls.join("\\n")}
-</urlset>
-\`;
-
-  return new Response(body, {
-    headers: {
-      "Content-Type": "application/xml; charset=utf-8",
-      "Cache-Control": "public, no-cache",
-    },
-  });
-}
-
-/** XML, not HTML: apostrophes are legal in a URL and must be escaped here. */
-function escapeXML(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+export function GET(): Response {
+  return sitemap([{ url: "/" }], { origin: SITE_URL });
 }
 `,
 
