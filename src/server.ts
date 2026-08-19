@@ -1058,54 +1058,66 @@ async function serveStaticIfExists(
   // Before safeJoin, because safeJoin is where the blocking stat lives.
   if (index !== null && !index.has(pathname)) return null;
 
-  // A path served once is served again from what was learned the first time.
-  // Serving a file cost four filesystem round trips — existsSync in safeJoin,
-  // realpathSync for the link check, file.exists(), then size and lastModified
-  // for the validator — which made serving a stylesheet measurably slower than
-  // rendering a page. The security checks are not skipped, they are already
-  // done: nothing reaches this cache without having passed them.
+  // A path resolved once is resolved again from what was learned the first
+  // time. Resolving is the expensive half: `existsSync` in safeJoin costs
+  // ~0.015ms and the `realpathSync` behind the link check ~0.087ms, against
+  // ~0.008ms to read a file's size and mtime. So the path is remembered and the
+  // validator is not.
+  //
+  // Remembering the validator as well was a mistake. A file replaced under a
+  // running server then kept its old ETag: the new bytes were served with the
+  // old tag, and a client holding that tag revalidated to 304 for as long as
+  // the process lived. Correct bytes, stale validator, silent, and permanent
+  // from the client's side.
+  //
+  // The security checks are not skipped by the cache, they are already done:
+  // nothing reaches it without having passed safeJoin.
   const cached = index?.meta.get(pathname);
   if (cached !== undefined) {
-    return staticResponse(request, Bun.file(cached.target), cached, dev, immutable);
+    return staticResponse(request, cached.target, dev, immutable);
   }
 
   const target = safeJoin(rootDir, pathname, followSymlinks);
   if (!target) return null;
 
-  const file = Bun.file(target);
-  if (!(await file.exists())) return null;
-
-  // Read once. Every access to these goes back to the file handle.
-  const meta: StaticMeta = {
-    target,
-    etag: `W/"${file.size.toString(16)}-${file.lastModified.toString(16)}"`,
-    lastModified: file.lastModified,
-  };
+  const response = await staticResponse(request, target, dev, immutable);
+  if (response === null) return null;
 
   // Only in production, and only behind an index — the same assumption the
-  // index already makes, that a served directory does not change under a
-  // running server. In dev every request re-reads, so edits show up.
-  if (index !== null && !dev) index.meta.set(pathname, meta);
+  // index already makes, that the set of files in a served directory does not
+  // change under a running server. What may change is their contents, which is
+  // why only the path is kept.
+  if (index !== null && !dev) index.meta.set(pathname, { target });
 
-  return staticResponse(request, file, meta, dev, immutable);
+  return response;
 }
 
-/** What a served file's metadata is remembered as. */
+/** What a served file is remembered as: where it is, and nothing about it. */
 interface StaticMeta {
   target: string;
-  etag: string;
-  lastModified: number;
 }
 
-/** Build the response for a file whose metadata is already known. */
-function staticResponse(
+/**
+ * Build the response for a resolved path.
+ *
+ * Returns null when the file is not there, which the caller treats as a miss —
+ * a path can be indexed at startup and deleted afterwards.
+ */
+async function staticResponse(
   request: Request,
-  file: Bun.BunFile,
-  meta: StaticMeta,
+  target: string,
   dev: boolean,
   immutable: boolean,
-): Response {
+): Promise<Response | null> {
+  // A fresh BunFile per request, deliberately: one held across requests answers
+  // `size` and `lastModified` from the stat it took the first time, which is
+  // the same staleness this function exists to avoid.
+  const file = Bun.file(target);
+
   if (immutable) {
+    // Content-hashed filename, so the bytes cannot change under it. There is no
+    // validator to go stale and nothing to re-read — the one case where
+    // remembering everything is provably safe.
     return new Response(file, {
       headers: {
         "Cache-Control": dev ? "no-store" : "public, max-age=31536000, immutable",
@@ -1114,17 +1126,22 @@ function staticResponse(
     });
   }
 
+  if (!(await file.exists())) return null;
+
   const headers: Record<string, string> = {
     "Cache-Control": dev ? "no-store" : "no-cache",
     "X-Content-Type-Options": "nosniff",
   };
 
   if (!dev) {
-    const etag = meta.etag;
+    // Read now, for this response. These are what the client will revalidate
+    // against, so they have to describe the bytes being sent.
+    const lastModified = file.lastModified;
+    const etag = `W/"${file.size.toString(16)}-${lastModified.toString(16)}"`;
     headers.ETag = etag;
-    headers["Last-Modified"] = new Date(meta.lastModified).toUTCString();
+    headers["Last-Modified"] = new Date(lastModified).toUTCString();
 
-    if (isFresh(request, etag, meta.lastModified)) {
+    if (isFresh(request, etag, lastModified)) {
       // 304 carries no body, so the response is a few hundred bytes regardless
       // of how large the asset is.
       return new Response(null, { status: 304, headers });

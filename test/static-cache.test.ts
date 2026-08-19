@@ -1,12 +1,17 @@
 /**
- * Metadata remembered after a file is served once.
+ * What is remembered about a served file, and what deliberately is not.
  *
  * Serving an asset cost four filesystem round trips — the existence check in
  * safeJoin, the link check, `file.exists()`, then size and mtime for the
  * validator. Measured over HTTP that made serving a stylesheet slower than
- * rendering a whole page. These tests pin the behaviour the cache must keep:
- * identical headers on the second request as on the first, revalidation still
- * working, and no caching at all in dev, where files change under the server.
+ * rendering a whole page.
+ *
+ * The first version of this cache remembered the validator too, which was
+ * wrong. Resolving a path costs ~0.10ms (`realpathSync` alone is ~0.087ms);
+ * reading size and mtime costs ~0.008ms. Keeping the second saved almost
+ * nothing and pinned clients to bytes that had since changed. So the path is
+ * cached and the validator is read per request, and these tests pin both
+ * halves: the saving, and the freshness.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -26,6 +31,11 @@ beforeAll(() => {
   mkdirSync(PUBLIC, { recursive: true });
   mkdirSync(ROUTES, { recursive: true });
   writeFileSync(join(PUBLIC, "styles.css"), "body{color:red}");
+  // Present before any app starts: the startup listing only contains files that
+  // were there when it was read, and these tests are about contents changing,
+  // not about files appearing.
+  writeFileSync(join(PUBLIC, "mutable.css"), "body{color:red}");
+  writeFileSync(join(PUBLIC, "doomed.css"), "body{}");
   writeFileSync(
     join(ROUTES, "index.tsx"),
     `export default function Home() { return <main>hi</main>; }`,
@@ -120,5 +130,99 @@ describe("dev", () => {
 
     // Restore, so the production tests above do not depend on execution order.
     writeFileSync(join(dir, "styles.css"), "body{color:red}");
+  });
+});
+
+describe("a file that changes under a running server", () => {
+  /**
+   * The regression this cache caused and now must not.
+   *
+   * Replacing a file in public/ served the new bytes with the old ETag, so a
+   * client holding that tag revalidated to 304 for the life of the process —
+   * correct content, stale validator, and permanent from the client's side.
+   */
+  const mutable = () => join(PUBLIC, "mutable.css");
+
+  test("the ETag follows the contents", async () => {
+    writeFileSync(mutable(), "body{color:red}");
+    const server = await app(false);
+
+    const before = await get(server, "/mutable.css");
+    const oldEtag = before.headers.get("ETag");
+    expect(await before.text()).toBe("body{color:red}");
+    expect(oldEtag).toBeTruthy();
+
+    // Long enough that mtime differs: the validator has second resolution.
+    await Bun.sleep(1100);
+    writeFileSync(mutable(), "body{color:blue}");
+
+    const after = await get(server, "/mutable.css");
+    expect(await after.text()).toBe("body{color:blue}");
+    expect(after.headers.get("ETag")).not.toBe(oldEtag);
+  });
+
+  test("the old validator no longer revalidates to 304", async () => {
+    writeFileSync(mutable(), "body{color:red}");
+    const server = await app(false);
+
+    const before = await get(server, "/mutable.css");
+    const oldEtag = before.headers.get("ETag")!;
+    await before.arrayBuffer();
+
+    await Bun.sleep(1100);
+    writeFileSync(mutable(), "body{color:blue}");
+
+    // The whole bug in one assertion: a client that kept the old tag must be
+    // given the new file, not told it is still current.
+    const revalidated = await get(server, "/mutable.css", { "If-None-Match": oldEtag });
+    expect(revalidated.status).toBe(200);
+    expect(await revalidated.text()).toBe("body{color:blue}");
+  });
+
+  test("Last-Modified follows the contents too", async () => {
+    writeFileSync(mutable(), "a");
+    const server = await app(false);
+
+    const before = await get(server, "/mutable.css");
+    const oldModified = before.headers.get("Last-Modified");
+    await before.arrayBuffer();
+
+    await Bun.sleep(1100);
+    writeFileSync(mutable(), "b");
+
+    const after = await get(server, "/mutable.css");
+    await after.arrayBuffer();
+    expect(after.headers.get("Last-Modified")).not.toBe(oldModified);
+  });
+
+  test("an unchanged file still answers 304", async () => {
+    // The saving has to survive the fix: nothing changed, so nothing is resent.
+    writeFileSync(mutable(), "body{color:green}");
+    const server = await app(false);
+
+    const first = await get(server, "/mutable.css");
+    const etag = first.headers.get("ETag")!;
+    await first.arrayBuffer();
+
+    for (let i = 0; i < 3; i++) {
+      const again = await get(server, "/mutable.css", { "If-None-Match": etag });
+      expect(again.status).toBe(304);
+      expect(await again.text()).toBe("");
+    }
+  });
+
+  test("a file deleted after startup answers 404 rather than an empty 200", async () => {
+    // The path is indexed and cached; the file is not there any more. Serving a
+    // zero-byte 200 would look like a broken asset rather than a missing one.
+    const doomed = join(PUBLIC, "doomed.css");
+    writeFileSync(doomed, "body{}");
+    const server = await app(false);
+
+    expect((await get(server, "/doomed.css")).status).toBe(200);
+
+    rmSync(doomed, { force: true });
+
+    const gone = await get(server, "/doomed.css");
+    expect(gone.status).toBe(404);
   });
 });
