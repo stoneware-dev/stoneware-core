@@ -84,6 +84,14 @@ interface Context {
    * on each one measured 38% of a full page render.
    */
   tag: string | null;
+  /**
+   * Whether to watch for signals that carry state between requests.
+   *
+   * Resolved once per render rather than per signal: the answer comes from
+   * `AsyncLocalStorage`, and reading that for every signal on a page would put
+   * a real cost on production for a check production never performs.
+   */
+  watchSharedSignals: boolean;
 }
 
 /** Render a tree to HTML, collecting any islands encountered along the way. */
@@ -93,6 +101,10 @@ export function renderToString(child: Child, options: RenderOptions = {}): Rende
     collected: [],
     nextId: 0,
     tag: null,
+    // Only inside a dev server request. A bare renderToString - a test, a
+    // fragment rendered by hand - has no request context and nothing to
+    // compare against, so it never reports.
+    watchSharedSignals: peekRenderContext()?.config.dev === true,
   };
   // The path has finished assembling by the time it reaches here, so this is
   // where it gets folded into the message.
@@ -104,6 +116,81 @@ export function renderToString(child: Child, options: RenderOptions = {}): Rende
   }
 
   return { html, islands: ctx.collected };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Cross-request state detection (development only)                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Signals that carry a visitor's data into the next visitor's page.
+ *
+ * A signal declared at module scope is one instance per *process* on the
+ * server, shared by every request that process ever answers. Reading one during
+ * a render is fine and is how islands share state. Writing one is a cross-user
+ * data leak, and it is silent: the page renders, the types check, the tests
+ * pass, and the status is 200. Reproduced on a two-route fixture, a request
+ * carrying no parameters at all was served the previous visitor's identity and
+ * basket, and two concurrent requests each rendered the other's data.
+ *
+ * Detection is by comparison rather than by interception. Nothing here wraps
+ * `signal()` - `stoneware/signals` is a thin pass-through by design (CLAUDE.md
+ * §2.3) and wrapping it would put this code in every island's client bundle.
+ * Instead the renderer remembers what each signal held last time it rendered
+ * one, and says something when that changes underneath it.
+ *
+ * What it cannot see: a signal mutated during a render but never rendered. The
+ * leak is only observable here if the value reaches the output.
+ */
+let lastRenderedValue = new WeakMap<object, unknown>();
+
+/** Signals already reported, so one mistake produces one message. */
+let reportedSignals = new WeakSet<object>();
+
+/**
+ * Discard everything observed so far.
+ *
+ * Exists for tests, which need each case to start from nothing. There is no way
+ * to clear a WeakMap, so both are replaced.
+ */
+export function resetSharedSignalWatch(): void {
+  lastRenderedValue = new WeakMap();
+  reportedSignals = new WeakSet();
+}
+
+function noteRenderedSignal(signal: object, value: unknown, tag: string | null): void {
+  const seenBefore = lastRenderedValue.has(signal);
+  const previous = lastRenderedValue.get(signal);
+  lastRenderedValue.set(signal, value);
+
+  // A signal created fresh inside a component has no history and never will,
+  // because the next render creates a different object.
+  if (!seenBefore) return;
+  if (Object.is(previous, value)) return;
+  if (reportedSignals.has(signal)) return;
+
+  reportedSignals.add(signal);
+
+  const where = tag === null ? "" : ` rendered inside <${tag}>`;
+  console.warn(
+    `[stoneware] A signal${where} changed value between renders: ` +
+      `${summarizeValue(previous)} -> ${summarizeValue(value)}.\n` +
+      `  A signal declared at module scope is one instance per server process, shared by every\n` +
+      `  request it answers, so a value written during one render is still there for the next\n` +
+      `  visitor. If this value differs per visitor, pass it to the island as a prop instead —\n` +
+      `  props belong to one response and cannot outlive it.\n` +
+      `  Reported once per signal, in development only.`,
+  );
+}
+
+/** Short, safe rendering of a signal's value for the message. */
+function summarizeValue(value: unknown): string {
+  if (typeof value === "string") {
+    return value.length > 40 ? `"${value.slice(0, 40)}…"` : `"${value}"`;
+  }
+  if (value === null || value === undefined) return String(value);
+  if (typeof value === "object") return Array.isArray(value) ? `[…${value.length}]` : "{…}";
+  return String(value);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -281,7 +368,9 @@ function renderChild(child: Child, ctx: Context): string {
   // A signal renders its current value. On the server that is a one-time read;
   // the reactive binding is established later, in the browser.
   if (child instanceof Signal || isSignalLike(child)) {
-    return renderChild((child as { value: Child }).value, ctx);
+    const value = (child as { value: Child }).value;
+    if (ctx.watchSharedSignals) noteRenderedSignal(child as object, value, ctx.tag);
+    return renderChild(value, ctx);
   }
 
   if (Array.isArray(child)) {

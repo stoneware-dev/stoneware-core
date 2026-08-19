@@ -114,7 +114,7 @@ async function checkFrameworkVersion(): Promise<Finding> {
         detail:
           "A deploy that copies the build elsewhere - a container, a serverless " +
           "function, a CI artifact - will start and then 404 every path. " +
-          "Upgrade to 0.1.8.",
+          "Fixed in 0.1.4; upgrade to the latest release.",
       };
     }
 
@@ -126,7 +126,8 @@ async function checkFrameworkVersion(): Promise<Finding> {
           "The island manifest is read through a runtime path, so a platform that " +
           "traces imports leaves it behind and the server throws at boot with " +
           "'Island manifest not found'. Affects Vercel and anything similar; a VPS " +
-          "or container that ships the directory is unaffected. Upgrade to 0.1.8.",
+          "or container that ships the directory is unaffected. Fixed in 0.1.5; upgrade to " +
+          "the latest release.",
       };
     }
 
@@ -139,7 +140,8 @@ async function checkFrameworkVersion(): Promise<Finding> {
           "tracing cannot follow. Where the file does not arrive nothing throws - the " +
           "app comes up on defaults, with your csp, cors and trustProxy silently " +
           "absent - or refuses to start if the config is where your CSRF secret comes " +
-          "from. Affects Vercel and anything similar. Upgrade to 0.1.8.",
+          "from. Affects Vercel and anything similar. Fixed in 0.1.6; upgrade to the latest " +
+          "release.",
       };
     }
 
@@ -154,7 +156,8 @@ async function checkFrameworkVersion(): Promise<Finding> {
           "which reads as a CSS bug rather than a missing file. 0.1.7 tried copying " +
           "them into public/, which is not enough: Vercel collects public/ from the " +
           "repository, so a directory the build creates is never in the snapshot. From " +
-          "0.1.8 `build --target vercel` carries them inside the bundle. Upgrade to 0.1.8.",
+          "0.1.8 `build --target vercel` carries them inside the bundle. Upgrade to the " +
+          "latest release.",
       };
     }
 
