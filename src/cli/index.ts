@@ -19,8 +19,8 @@ Usage
   stoneware dev     [--root <dir>] [--port <n>]   Start the dev server with hot reload
   stoneware build   [--root <dir>] [--target <t>] Production build (server + island bundles)
   stoneware start   [--root <dir>] [--port <n>]   Run the production server bundle
-  stoneware export  [--root <dir>] [--out <dir>]   Prerender to static HTML
-  stoneware preview [--root <dir>] [--out <dir>]   Serve a static export as a host would
+  stoneware export  [--root <dir>] [--out <dir>]  Prerender to static HTML
+  stoneware preview [--root <dir>] [--out <dir>]  Serve a static export as a host would
   stoneware routes  [--root <dir>]                Print the route table, in match order
   stoneware doctor  [--root <dir>]                Check the project setup
 
@@ -29,7 +29,7 @@ Options
   --port <n>       Port to listen on (default: 3000, or $PORT)
   --workers <n>    Processes sharing the port, or "auto" for one per core.
                    Linux only; ignored elsewhere with a reason (default: 1)
-  --target <t>     Deployment target for \`build\`: node (default) or vercel
+  --target <t>     Deployment target for \`build\`: default or vercel
   -h, --help       Show this message
       --open       Open a browser when the dev server starts
       --strict     Fail the export if any route was skipped or any link dangles
