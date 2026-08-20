@@ -10,12 +10,11 @@ Escaping, CSRF verification, and a strict CSP are on before you write any config
 Measured on this repo's own documentation site, in production:
 
 | | |
-|---|---|
+| --- | --- |
 | Whole client runtime (signals + hydrate + DOM) | ~3.4 KB gzipped |
 | One island (the counter on the home page) | ~0.2 KB gzipped |
 | A page with no islands | **0 bytes, no script tag** |
 | Runtime dependencies | **1** (`@preact/signals-core`) |
-
 
 ## Try Stoneware in 60 seconds
 
@@ -26,62 +25,68 @@ bun install
 bun run dev
 ```
 
-Then open http://localhost:3000.
+Then open <http://localhost:3000>.
 
 Scaffolding runs on plain Node, so `npx` works before Bun is installed. Everything after that — the
 dev server, the build — runs on Bun, and `stoneware` says so with an install link if Bun is missing.
 
 ## Documentation
 
-Full documentation lives on the Stoneware docs site, which is itself built with Stoneware:
+Full documentation lives on the Stoneware docs site, which is itself built with Stoneware — so
+every claim on it is running the code it describes.
 
-**→ [Read the documentation](https://github.com/stoneware-dev/stoneware-docs)**
+**→ [Read the documentation](https://stoneware-docs-1lob.onrender.com/docs)**
 
-It covers the [full benchmark](https://github.com/stoneware-dev/stoneware-docs), routing, islands and signals, hydration directives (`client:visible`, `client:idle`,
-`client:media`), co-located CSS, head metadata, `seo()` and `<Image>`, middleware, server actions and CSRF, security
-defaults, error pages, caching, the CLI, and deploying — including static export to hosts that
-cannot run Bun.
+Routing and catch-all patterns, components, islands and signals, hydration directives
+(`client:visible`, `client:idle`, `client:media`), co-located CSS, head metadata, `seo()` and
+`<Image>`, middleware, server actions and CSRF, security defaults, error pages and boundaries,
+caching, testing, configuration, the API reference, the CLI, and deploying — including static
+export to hosts that cannot run Bun.
+
+- [Quick start](https://stoneware-docs-1lob.onrender.com/docs/quick-start)
+- [How it works](https://stoneware-docs-1lob.onrender.com/docs/how-it-works) — the request pipeline and the render model
+- [Full benchmark](https://stoneware-docs-1lob.onrender.com/docs/benchmark) — both studies, with the run they came from
+- [Writing](https://stoneware-docs-1lob.onrender.com/blogs) — longer posts on the decisions behind it
+
+The site's source is its own repository,
+[stoneware-docs](https://github.com/stoneware-dev/stoneware-docs). It installs `stoneware` from
+npm exactly as any other project does, so it cannot quietly depend on unreleased behaviour.
 
 ## Benchmark
 
-A 16-page portfolio and blog, built three times with matching content and the
-same five interactive components. Lighthouse mobile throttling (1638 Kbps,
-150 ms RTT, 4x CPU), 10 runs per page, median.
+Twenty articles and an index — 42,871 words — built three times from a byte-identical
+`content.json`, through a byte-identical stylesheet, into byte-identical markup, then measured
+over HTTP against each framework's own production server.
 
-| | Stoneware | Astro 5.18 | Next.js 15.5 |
-|---|---|---|---|
-| JS transferred | **14.2 KB** | 193.1 KB | 346.0 KB |
-| HTML | **3.4 KB** | 8.1 KB | 10.2 KB |
-| Total transferred | **22.5 KB** | 205.2 KB | 359.4 KB |
-| Requests | 8 | 8 | **7** |
-| **LCP** | **1217 ms** | 2253 ms | 2965 ms |
-| FCP | 1062 ms | 1429 ms | **754 ms** |
-| Total blocking time | **0 ms** | **0 ms** | 58 ms |
-| Lighthouse performance | **100** | 99 | 95 |
-| Build (16 pages, cold) | **0.71 s** | 35.6 s | 61.6 s |
+Stoneware 0.2.0 · Astro 7.2.2 · Next.js 16.3.1 (App Router)
 
-**JavaScript is the whole story.** All three score CLS 0.000 and TTFB of 1-3 ms,
-so layout stability and server latency are noise. What separates them is
-**13.6x and 24.4x more JavaScript** for the same five islands.
+| | Stoneware | Astro | Next.js |
+| --- | --- | --- | --- |
+| JavaScript on an article page | **0 B** | **0 B** | 576 KB |
+| Pages shipping no JavaScript | **20 of 21** | **20 of 21** | 0 of 21 |
+| JavaScript, whole site, gzipped | 4.8 KB | **0.3 KB** | 255.3 KB |
+| HTML, whole site, gzipped | 60.3 KB | **59.4 KB** | 112.7 KB |
+| Peak memory during build | **88 MB** | 356 MB | 1143 MB |
+| Time to first byte, p50 | **1.13 ms** | 1.74 ms | 1.84 ms |
+| Requests/sec at 100 connections | **2236** | 1984 | 920 |
 
-Astro's LCP is almost perfectly flat at ~2253 ms whether a page carries 426 or
-3,367 bytes of content, and Next.js the same at ~2960 ms - the client runtime is
-a fixed cost on the critical path, so page weight barely matters beside it.
-Stoneware is the only one whose LCP tracks the page (909-1512 ms), because there
-is no fixed cost to dominate it.
+**Astro wins two rows and the table says so.** A plain `<script>` tag beats a hydrated island
+for one text box, and 0.3 KB against 4.8 KB is not close — that 4.8 KB is signals plus the
+hydration runtime, which is the price of the island model rather than an inefficiency in it.
 
-Two results worth stating plainly: **Next.js wins FCP** by inlining more of the
-critical path - fast first paint, then a ~2.2 s wait for the JavaScript that
-makes it useful. And **a perfect score is not discriminating**: 100 / 99 / 95
-would all pass a casual audit while hiding a 24x spread in JavaScript shipped.
+Next.js sends 576 KB of JavaScript to a page with no interactive element on it, and its HTML is
+two and a half times larger because 23.4 KB of the document is the article re-encoded as an
+inline RSC payload — the content going out a second time.
 
-> **Read the numbers fairly.** Bytes are uncompressed; production would compress
-> all three, which narrows transfer but not parse-and-execute time. The build
-> column is not like-for-like either - `stoneware build` emits a server bundle
-> while Astro and Next.js prerender 16 HTML files; the comparable command is
-> `stoneware export`, at 0.63 s. Build timing was also the noisiest metric
-> measured, so treat the ordering as the result and the absolute values as
-> indicative.
+> **Read it fairly.** Every figure comes from one named run; sizes are deterministic between
+> runs and timings are not, so the tail is deliberately absent here. Build *time* is omitted for
+> the same reason it should be: `stoneware build` emits a server bundle while the others
+> prerender 21 files, so the comparison is not like-for-like. The load generator shares a
+> machine with the server, which makes throughput a floor rather than a ceiling.
+
+The [full study](https://stoneware-docs-1lob.onrender.com/docs/benchmark) has the complete
+tables, the second study on what a browser experiences under Lighthouse throttling, and the run
+each number was taken from.
 
 ## The five decisions that define it
 
@@ -105,7 +110,7 @@ what an attribute may be, so a `javascript:` URL is refused on first paint *and*
 
 ## Project layout
 
-```
+```text
 my-site/
   routes/                  file-based routing, server-only
     index.tsx              -> /
@@ -121,7 +126,7 @@ my-site/
 
 ## CLI
 
-```
+```text
 stoneware dev     Start the dev server with hot reload
 stoneware build   Production build (server bundle + island chunks)
 stoneware start   Run the production server bundle
@@ -152,31 +157,34 @@ which is exactly why it has to keep coming from there.
 
 ## Requirements
 
-## Requirements
-
 Bun >= 1.3.0. The framework is built on `Bun.serve`, `Bun.build`, `Bun.escapeHTML`, `Bun.CSRF` and
 `Bun.FileSystemRouter` - it is Bun-native, not Node-compatible-via-Bun.
 
 ## Contributing
 
-How the framework is put together — the request pipeline, the render model, and
-the reasoning behind the parts that are easy to undo by accident — is in
-[ARCHITECTURE.md](ARCHITECTURE.md).
+Bug reports, documentation corrections and "this confused me" are all welcome, and none of them
+need permission — open an issue.
 
-The documentation site lives in its own repository,
-[stoneware-docs](https://github.com/stoneware-dev/stoneware-docs). It consumes `stoneware`
-from npm exactly as any other project does, so it cannot quietly depend on unreleased behaviour.
+**Pull requests are limited to repository collaborators.** The design conversation happens first,
+on an issue, so nobody spends their evenings on a change that turns out to be out of scope. If an
+approach fits, you are invited as a collaborator and open the PR then.
+[CONTRIBUTING.md](CONTRIBUTING.md) has the full path, what makes a proposal easy to accept, and
+what is deliberately out of scope.
+
+How the framework is put together — the request pipeline, the render model, and the reasoning
+behind the parts that are easy to undo by accident — is in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ```sh
 bun install
-bun test
+bun test          # 46 test files
+bun run typecheck
 ```
 
 ## Status
 
-v0.2. Deliberately **not** included yet: streaming SSR, resumability, multi-framework islands,
-edge/serverless targets, and a local-first data layer. Each was considered and deferred - see
-`CLAUDE.md`.
+v0.2.0. Deliberately **not** included yet: streaming SSR, resumability, multi-framework islands,
+edge runtime targets, and a local-first data layer. Each was considered and deferred — see
+[`claude.md`](claude.md).
 
 Resumability in particular is not on the roadmap and the word is not used loosely here: islands are
 server-rendered and then hydrated, which means the island component runs again on the client. What
