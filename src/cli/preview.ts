@@ -23,7 +23,7 @@
 import { existsSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
 import { listen } from "../http/listen.ts";
-import { safeJoin } from "../http/server.ts";
+import { safeJoin } from "../http/static.ts";
 
 export interface PreviewResult {
   dir: string;

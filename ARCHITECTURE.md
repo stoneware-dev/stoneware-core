@@ -24,10 +24,11 @@ src/
   routing/          a URL becomes a matched route
                     router, route-table, url
   render/           a route's JSX becomes one HTML string
-                    render, escape, attributes, document, types
+                    render, classify, errors, escape, attributes,
+                    document, types
   http/             a Request becomes a Response
-                    server, listen, cluster, cors, csrf, public-csrf,
-                    middleware, context, observe
+                    server, static, responses, listen, cluster, cors,
+                    csrf, public-csrf, middleware, context, observe
   helpers/          what a template imports: Form, Image, seo, sitemap,
                     Boundary, notFound
   build/            islands become client chunks
@@ -36,10 +37,15 @@ src/
   client/           the only code that reaches a browser
 ```
 
-Two of these carry most of the weight: `http/server.ts` and `render/render.ts`
-are together about a quarter of the source. If you are looking for where
-something happens and it is not obvious from the folder, it is probably in one
-of those two.
+`http/server.ts` (935 lines) and `render/render.ts` (845) are still the two
+largest files, and what remains in them is the part that genuinely resists
+being split: `server.ts` is mostly one `createApp` closure, and `render.ts` is
+one mutually recursive walk. If something is not obvious from the folder, it is
+probably in one of those two.
+
+What *was* liftable has been lifted, and each of those four files answers one
+question without needing the walk or the pipeline in scope — which is why they
+can be read, and tested, on their own.
 
 The four files at the top of `src/` stay there because `package.json`'s
 `exports` names them. Moving one changes what `stoneware/...` resolves to.
@@ -104,10 +110,14 @@ others. A new code path physically cannot skip them.
 
 | Module | Responsibility |
 | --- | --- |
-| `http/server.ts` | The pipeline above. The only place responses are assembled. |
+| `http/server.ts` | The pipeline above, and `createApp` |
+| `http/static.ts` | Serving a directory: containment, the negative path index, revalidation |
+| `http/responses.ts` | The single exit. Security headers, CORS, error pages, JSON negotiation |
 | `routing/router.ts` | Filename → pattern (via `Bun.FileSystemRouter`), module loading, page/action classification |
 | `routing/route-table.ts` | Matching a path against compiled patterns. Own implementation — see §7 |
-| `render/render.ts` | JSX tree → HTML string, island collection, error attribution |
+| `render/render.ts` | JSX tree → HTML string, island collection |
+| `render/errors.ts` | Naming the components an error passed through — see §4 |
+| `render/classify.ts` | What a tag or attribute name means, cached per name |
 | `jsx-runtime.ts` | `h`/`jsx`/`Fragment`. Builds inert `{type, props}` records, nothing more |
 | `render/types.ts` | `VNode`, `Child`, `Component` vs `PageComponent`. Symbol brands |
 | `render/escape.ts` | `Bun.escapeHTML`, `raw()`, and JSON-in-HTML serialization |

@@ -17,27 +17,30 @@ import {
   isSignalLike,
   unsafeURLReason,
 } from "./attributes.ts";
+import {
+  describeValue,
+  finalizeRenderError,
+  noteFrame,
+  renderError,
+} from "./errors.ts";
 import { noteCaught, peekRenderContext } from "../http/context.ts";
 import { escapeHTML, safeJSONStringify } from "./escape.ts";
 import { Boundary } from "../helpers/boundary.tsx";
 import { isNotFound } from "../helpers/not-found.ts";
 import { Fragment, isRaw, isVNode } from "./types.ts";
+import {
+  DIRECTIVE_ATTRIBUTE,
+  DIRECTIVE_PREFIX,
+  SKIP_ATTRIBUTE,
+  TAG_INVALID,
+  TAG_RAW_TEXT,
+  TAG_VOID,
+  classifyAttribute,
+  classifyTag,
+} from "./classify.ts";
 import type { BoundaryProps } from "../helpers/boundary.tsx";
 import type { Child, Component, Props, VNode } from "./types.ts";
 
-/** Elements that must not be given a closing tag. */
-const VOID_ELEMENTS = new Set([
-  "area", "base", "br", "col", "embed", "hr", "img", "input",
-  "link", "meta", "param", "source", "track", "wbr",
-]);
-
-/**
- * Elements whose content is raw text (CDATA) rather than markup. Stoneware refuses
- * to interpolate dynamic values into these at all - escaping rules inside
- * `<script>`/`<style>` differ from HTML text, and getting them subtly wrong is
- * how injection bugs happen. Use a dedicated helper or an external file.
- */
-const RAW_TEXT_ELEMENTS = new Set(["script", "style"]);
 
 
 /** When an island instance hydrates. `load` is the default. */
@@ -193,168 +196,6 @@ function summarizeValue(value: unknown): string {
   return String(value);
 }
 
-/* -------------------------------------------------------------------------- */
-/* Error attribution                                                           */
-/* -------------------------------------------------------------------------- */
-
-/**
- * Which components a render error passed through on its way out.
- *
- * The renderer is a depth-first walk, so by the time an unsupported value is
- * discovered the only thing on the stack is the renderer itself: `renderChild`
- * called by `renderElement` called by `renderChild`, over and over. That names
- * the mechanism and not one line of the project's own code, which is the
- * opposite of what a stack trace is for.
- *
- * The walk *does* know, though - it just knows it on the way in, and the error
- * happens on the way out. So each component and element frame catches, records
- * its own name, and rethrows. The path assembles itself as the error unwinds,
- * costs nothing when nothing throws, and needs no bookkeeping on the hot path.
- */
-const RENDER_ERROR = Symbol.for("stoneware.renderError");
-const COMPONENT_PATH = Symbol.for("stoneware.componentPath");
-
-interface RenderErrorParts {
-  /** First line: what went wrong. */
-  headline: string;
-  /** Everything after the path: what to do about it. */
-  detail: string;
-}
-
-type Annotated = {
-  [RENDER_ERROR]?: RenderErrorParts;
-  [COMPONENT_PATH]?: string[];
-};
-
-/**
- * A render error the framework raised itself.
- *
- * Held as parts rather than a finished string because the path belongs between
- * them, and the path is not known until the error has finished unwinding.
- */
-function renderError(parts: RenderErrorParts): TypeError {
-  const error = new TypeError(`${parts.headline}\n\n${parts.detail}`);
-
-  // Drop this factory from the trace. Without it the first frame - and the
-  // source excerpt printed above it - is the line inside render.ts that
-  // constructs the error, which is the least informative line in the whole
-  // stack and sits exactly where someone looks first.
-  Error.captureStackTrace?.(error, renderError);
-
-  Object.defineProperty(error, RENDER_ERROR, {
-    value: parts,
-    enumerable: false,
-    configurable: true,
-    writable: true,
-  });
-  return error;
-}
-
-/** Record one frame. Anything not an object - a thrown string - is left alone. */
-function noteFrame(error: unknown, frame: string): void {
-  if (typeof error !== "object" || error === null) return;
-  const annotated = error as Annotated;
-
-  let path = annotated[COMPONENT_PATH];
-  if (path === undefined) {
-    path = [];
-    // Non-enumerable, or every console.error that prints this error also prints
-    // `stoneware.componentPath: [ "<span>", ... ]` after the stack - the same
-    // information a second time, as noise, in the one place someone is already
-    // reading carefully.
-    Object.defineProperty(error, COMPONENT_PATH, {
-      value: path,
-      enumerable: false,
-      configurable: true,
-      writable: true,
-    });
-  }
-
-  // Capped: a deep tree would otherwise append a hundred frames, and the ones
-  // that identify the problem are the innermost few.
-  if (path.length < MAX_PATH_FRAMES) path.push(frame);
-}
-
-const MAX_PATH_FRAMES = 12;
-
-/**
- * The components an error passed through, innermost first.
- *
- * Exported so the request pipeline can report it for *any* error, not only the
- * framework's own: a database driver that throws inside a template gets the
- * same "which component" answer, without its message being rewritten.
- */
-export function componentPathOf(error: unknown): string[] | null {
-  if (typeof error !== "object" || error === null) return null;
-  const path = (error as Annotated)[COMPONENT_PATH];
-  return path && path.length > 0 ? path : null;
-}
-
-/** Render the collected path as indented `in <X>` lines. */
-export function formatComponentPath(path: string[]): string {
-  const lines = path.map((frame) => `  in ${frame}`);
-  if (path.length >= MAX_PATH_FRAMES) lines.push("  in ... (outer frames omitted)");
-  return lines.join("\n");
-}
-
-/**
- * Fold the collected path into the message, once.
- *
- * Only for errors the framework raised. A thrown value from project code keeps
- * its own message exactly as written - the path is still attached, and the
- * server logs it separately.
- */
-export function finalizeRenderError(error: unknown): unknown {
-  if (typeof error !== "object" || error === null) return error;
-
-  const annotated = error as Annotated;
-  const parts = annotated[RENDER_ERROR];
-  if (parts === undefined) return error;
-
-  // Cleared first, so an error that passes through two renders - a boundary
-  // fallback that rethrows, say - is not annotated twice.
-  delete annotated[RENDER_ERROR];
-
-  const path = annotated[COMPONENT_PATH];
-  if (path === undefined || path.length === 0) return error;
-
-  (error as { message: string }).message =
-    `${parts.headline}\n\n${formatComponentPath(path)}\n\n${parts.detail}`;
-  return error;
-}
-
-/**
- * What the unsupported value actually was.
- *
- * "Cannot render value of type object" is true of a Date, a database row, a
- * Map, and a class instance, and the fix is different for each. Keys are named
- * rather than values printed: `{ id, title, price }` is enough to recognise a
- * product row, while dumping the values would put whatever the row holds into
- * a log line.
- */
-function describeValue(value: object): string {
-  if (value instanceof Date) {
-    return "a Date. Format it first - {date.toISOString()} or your own helper";
-  }
-  if (value instanceof Map || value instanceof Set) {
-    return `a ${value.constructor.name} of size ${value.size}. Render [...value] instead`;
-  }
-  if (value instanceof Promise) {
-    return "a Promise. Only a route's default export may be async";
-  }
-
-  const name = value.constructor?.name;
-  if (name !== undefined && name !== "Object") {
-    return `an instance of ${name}. Render the fields you want, not the object`;
-  }
-
-  const keys = Object.keys(value);
-  if (keys.length === 0) return "a plain object with no keys";
-
-  const shown = keys.slice(0, 8).join(", ");
-  const rest = keys.length > 8 ? `, ... (${keys.length} keys)` : "";
-  return `a plain object with keys: ${shown}${rest}`;
-}
 
 function renderChild(child: Child, ctx: Context): string {
   // Booleans render as nothing so `{cond && <p/>}` works as expected.
@@ -550,94 +391,6 @@ function reportCaught(error: unknown): void {
 /* Classification caches                                                       */
 /* -------------------------------------------------------------------------- */
 
-/**
- * Tag and attribute names are a tiny fixed vocabulary, asked about constantly.
- *
- * A page is a few thousand elements, drawn from perhaps thirty tag names and
- * fifty attribute names. Every one of them was being re-derived on every
- * occurrence: a regex over the name, a `toLowerCase()` allocation, two Set
- * lookups per element; two regexes, a `startsWith` and an alias lookup per
- * attribute. Measured on a 58 kB page, that constant work was roughly half the
- * render - and none of it can change for a given name.
- *
- * Bounded, because a name is not guaranteed to come from source. A component
- * spreading keys derived from request data could otherwise grow these without
- * limit. Past the cap the answer is still correct, just recomputed.
- */
-const MAX_CACHED_NAMES = 4096;
-
-// Plain constants rather than a `const enum`: this package ships TypeScript
-// source, and a `const enum` only inlines reliably for a compiler that sees the
-// whole program. Nothing here crosses a module boundary, so the enum bought
-// nothing that a number does not.
-const TAG_INVALID = 0;
-const TAG_NORMAL = 1;
-const TAG_VOID = 2;
-const TAG_RAW_TEXT = 3;
-
-type TagClass = typeof TAG_INVALID | typeof TAG_NORMAL | typeof TAG_VOID | typeof TAG_RAW_TEXT;
-
-const tagClasses = new Map<string, TagClass>();
-
-function classifyTag(tag: string): TagClass {
-  const cached = tagClasses.get(tag);
-  if (cached !== undefined) return cached;
-
-  let computed: TagClass;
-  if (!VALID_ATTRIBUTE_NAME.test(tag)) {
-    computed = TAG_INVALID;
-  } else {
-    const lower = tag.toLowerCase();
-    computed = VOID_ELEMENTS.has(lower)
-      ? TAG_VOID
-      : RAW_TEXT_ELEMENTS.has(lower)
-        ? TAG_RAW_TEXT
-        : TAG_NORMAL;
-  }
-
-  if (tagClasses.size < MAX_CACHED_NAMES) tagClasses.set(tag, computed);
-  return computed;
-}
-
-/**
- * What a prop name resolves to: the attribute to emit, or why it emits nothing.
- *
- * Symbols rather than a wrapper object so the cached value needs no allocation
- * and the common case is a plain string.
- */
-const SKIP_ATTRIBUTE = null;
-const DIRECTIVE_ATTRIBUTE = Symbol("stoneware.directive");
-const INVALID_ATTRIBUTE = Symbol("stoneware.invalid");
-
-type AttributeClass = string | null | typeof DIRECTIVE_ATTRIBUTE | typeof INVALID_ATTRIBUTE;
-
-const attributeClasses = new Map<string, AttributeClass>();
-
-/**
- * Order is preserved exactly as it was written out: `children`/`key`/`ref` and
- * `dangerouslySetInnerHTML` first, then event handlers, then directives, then
- * validity. An event handler with an otherwise invalid name is still skipped
- * rather than rejected, because that is what it did before.
- */
-function computeAttributeClass(name: string): AttributeClass {
-  if (name === "children" || name === "key" || name === "ref") return SKIP_ATTRIBUTE;
-  if (name === "dangerouslySetInnerHTML") return SKIP_ATTRIBUTE;
-  // Event handlers only mean something once an island is hydrated.
-  if (EVENT_HANDLER.test(name)) return SKIP_ATTRIBUTE;
-  if (name.startsWith(DIRECTIVE_PREFIX)) return DIRECTIVE_ATTRIBUTE;
-
-  const attribute = ATTRIBUTE_ALIASES[name] ?? name;
-  return VALID_ATTRIBUTE_NAME.test(attribute) ? attribute : INVALID_ATTRIBUTE;
-}
-
-function classifyAttribute(name: string): AttributeClass {
-  const cached = attributeClasses.get(name);
-  if (cached !== undefined) return cached;
-
-  const computed = computeAttributeClass(name);
-  if (attributeClasses.size < MAX_CACHED_NAMES) attributeClasses.set(name, computed);
-  return computed;
-}
 
 function renderElement(tag: string, props: Props, ctx: Context): string {
   const tagClass = classifyTag(tag);
@@ -834,8 +587,6 @@ function renderIsland(name: string, component: Component<any>, props: Props, ctx
 
   return renderElement(resolved.type, marked, ctx);
 }
-
-const DIRECTIVE_PREFIX = "client:";
 
 const STRATEGIES: Record<string, HydrationStrategy> = {
   "client:load": "load",

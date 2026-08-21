@@ -9,7 +9,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createApp, safeJoin } from "../src/http/server.ts";
+import { createApp } from "../src/http/server.ts";
+import { safeJoin } from "../src/http/static.ts";
 import type { StonewareApp } from "../src/http/server.ts";
 
 const FIXTURE_ROOT = join(import.meta.dir, "fixture");

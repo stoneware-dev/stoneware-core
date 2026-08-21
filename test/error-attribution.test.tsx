@@ -14,7 +14,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { componentPathOf, renderToString } from "../src/render/render.ts";
+import { renderToString } from "../src/render/render.ts";
+import { componentPathOf } from "../src/render/errors.ts";
 import { Boundary } from "../src/helpers/boundary.tsx";
 import { isNotFound, notFound } from "../src/helpers/not-found.ts";
 import { join } from "node:path";
