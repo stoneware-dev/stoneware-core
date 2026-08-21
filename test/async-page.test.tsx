@@ -13,9 +13,9 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { renderToString } from "../src/render.ts";
-import type { Component, PageComponent } from "../src/types.ts";
-import type { PageProps } from "../src/router.ts";
+import { renderToString } from "../src/render/render.ts";
+import type { Component, PageComponent } from "../src/render/types.ts";
+import type { PageProps } from "../src/routing/router.ts";
 
 describe("the types", () => {
   test("an async route component satisfies PageComponent", () => {
@@ -80,7 +80,7 @@ describe("through the server", () => {
     // server awaits the route, and the response carries the resolved markup.
     process.env.STONEWARE_CSRF_SECRET = "async-page-test-secret-0123456789";
 
-    const { createApp } = await import("../src/server.ts");
+    const { createApp } = await import("../src/http/server.ts");
     const { join } = await import("node:path");
 
     const root = join(import.meta.dir, "fixture");

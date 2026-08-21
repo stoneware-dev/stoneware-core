@@ -16,27 +16,27 @@ import {
   STYLESHEET_MANIFEST_FILE,
   buildIslands,
   buildStyles,
-} from "./build.ts";
-import { SECURITY_HEADERS, resolveConfig } from "./config.ts";
-import { buildDocument } from "./document.ts";
+} from "../build/build.ts";
+import { SECURITY_HEADERS, resolveConfig } from "../config.ts";
+import { buildDocument } from "../render/document.ts";
 import { corsHeaders, preflightResponse } from "./cors.ts";
 import { verifyRequest } from "./csrf.ts";
 import { withRenderContext } from "./context.ts";
-import { buildIslandRegistry, discoverIslands, loadIslands } from "./islands.ts";
-import { componentPathOf, formatComponentPath, renderToString } from "./render.ts";
-import { Router } from "./router.ts";
-import { isNotFound } from "./not-found.ts";
+import { buildIslandRegistry, discoverIslands, loadIslands } from "../build/islands.ts";
+import { componentPathOf, formatComponentPath, renderToString } from "../render/render.ts";
+import { Router } from "../routing/router.ts";
+import { isNotFound } from "../helpers/not-found.ts";
 import { notify } from "./observe.ts";
 import type { Locals } from "./middleware.ts";
 import { listen } from "./listen.ts";
 import { isWorker, resolveWorkerCount, supervise } from "./cluster.ts";
 import type { Supervisor } from "./cluster.ts";
-import { requestURL } from "./url.ts";
+import { requestURL } from "../routing/url.ts";
 import type { RequestKind } from "./observe.ts";
-import type { IslandManifest } from "./build.ts";
-import type { StonewareConfig, ResolvedConfig } from "./config.ts";
-import type { ActionRoute, HTTPMethod, PageRoute } from "./router.ts";
-import type { Component } from "./types.ts";
+import type { IslandManifest } from "../build/build.ts";
+import type { StonewareConfig, ResolvedConfig } from "../config.ts";
+import type { ActionRoute, HTTPMethod, PageRoute } from "../routing/router.ts";
+import type { Component } from "../render/types.ts";
 
 export interface StonewareApp {
   config: ResolvedConfig;

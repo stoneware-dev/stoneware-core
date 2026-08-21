@@ -23,7 +23,12 @@ const files = {
         name,
         private: true,
         type: "module",
-        scripts: { dev: "stoneware dev", build: "stoneware build", start: "stoneware start" },
+        scripts: {
+          dev: "stoneware dev",
+          build: "stoneware build",
+          start: "stoneware start",
+          test: "bun test",
+        },
         dependencies: { stoneware: "^0.2.0" },
         devDependencies: { "@types/bun": "^1.3.0" },
         engines: { bun: ">=1.3.0" },
@@ -306,6 +311,53 @@ export function GET(): Response {
 }
 `,
 
+  // Here so that `bun test` is green in a fresh project, and so the harness is
+  // in front of you at the moment you would otherwise go looking for it: a page
+  // is tested by handing the app a Request, with no server started and no port
+  // bound. Delete it once you have written your own.
+  "test/pages.test.ts": () => `import { beforeAll, expect, test } from "bun:test";
+import { join } from "node:path";
+import { createApp, type StonewareApp } from "stoneware";
+
+let app: StonewareApp;
+
+beforeAll(async () => {
+  app = await createApp(
+    // root is explicit: left out it resolves against the directory the test
+    // runner started in, which is not always this one.
+    { root: join(import.meta.dir, ".."), csrf: { secret: "test-secret-not-a-real-one" } },
+    // dev: true builds this project's islands at startup, so a page that uses
+    // one renders here exactly as it does under \`stoneware dev\`.
+    { dev: true, islandManifest: {}, stylesheet: null },
+  );
+});
+
+const get = (path: string) => app.fetch(new Request(\`http://localhost\${path}\`));
+
+test("the home page renders on the server", async () => {
+  const response = await get("/");
+
+  expect(response.status).toBe(200);
+  expect(await response.text()).toContain("It renders on the server");
+});
+
+test("an unknown path gets the 404 page", async () => {
+  const response = await get("/nothing-is-published-here");
+
+  expect(response.status).toBe(404);
+  expect(await response.text()).toContain("Not found");
+});
+
+test("a page with no island ships no JavaScript", async () => {
+  // The framework's whole claim, as an assertion you own. routes/_404.tsx uses
+  // no island, so its HTML carries no script tag at all - not a small runtime,
+  // not a hydration shim. If that ever changes, this is what tells you.
+  const html = await (await get("/nothing-is-published-here")).text();
+
+  expect(html).not.toContain("<script");
+});
+`,
+
   "README.md": (name) => `# ${name}
 
 Built with [stoneware](https://github.com/stoneware-dev/stoneware-core) - server-first, Bun-native.
@@ -319,6 +371,15 @@ Built with [stoneware](https://github.com/stoneware-dev/stoneware-core) - server
     islands/   Interactive components. The only place client JS originates.
     lib/       Behavior functions and shared utilities.
     public/    Static assets, served as-is.
+    test/      Tests. \`bun test\` runs them.
+
+## Testing
+
+    bun test
+
+\`createApp()\` returns an app whose \`fetch\` takes a Request and returns a
+Response, so a page is tested without starting a server or binding a port.
+\`test/pages.test.ts\` is a worked example - delete it once you have your own.
 
 ## Environment
 

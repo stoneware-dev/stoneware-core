@@ -9,10 +9,10 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { renderToString } from "../src/render.ts";
+import { renderToString } from "../src/render/render.ts";
 import { DEFAULT_CSP, resolveConfig } from "../src/config.ts";
-import { withRenderContext } from "../src/context.ts";
-import type { RenderContext } from "../src/context.ts";
+import { withRenderContext } from "../src/http/context.ts";
+import type { RenderContext } from "../src/http/context.ts";
 
 function contextWith(csp: string | false, dev: boolean): RenderContext {
   process.env.STONEWARE_CSRF_SECRET = "inline-style-test-secret-0123456789";

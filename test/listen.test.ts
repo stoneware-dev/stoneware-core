@@ -14,7 +14,7 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { listen } from "../src/listen.ts";
+import { listen } from "../src/http/listen.ts";
 
 // High and arbitrary, to stay clear of anything the developer is running.
 let next = 4940;

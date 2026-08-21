@@ -16,10 +16,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { signal, computed } from "@preact/signals-core";
 
-import { renderToString, resetSharedSignalWatch } from "../src/render.ts";
-import { withRenderContext } from "../src/context.ts";
+import { renderToString, resetSharedSignalWatch } from "../src/render/render.ts";
+import { withRenderContext } from "../src/http/context.ts";
 import { resolveConfig } from "../src/config.ts";
-import type { RenderContext } from "../src/context.ts";
+import type { RenderContext } from "../src/http/context.ts";
 
 const SECRET = "shared-signal-watch-test";
 

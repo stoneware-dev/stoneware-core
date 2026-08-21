@@ -1,4 +1,4 @@
-import type { ErrorPageProps } from "../../../src/router.ts";
+import type { ErrorPageProps } from "../../../src/routing/router.ts";
 
 export default function NotFound({ url, status }: ErrorPageProps) {
   return (

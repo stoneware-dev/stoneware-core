@@ -10,7 +10,7 @@
  * CORS decides who may *read* the response; it does not decide who may act.
  */
 
-import type { ResolvedCORS } from "./config.ts";
+import type { ResolvedCORS } from "../config.ts";
 
 /**
  * The `Access-Control-*` headers for this request, or null when the origin is

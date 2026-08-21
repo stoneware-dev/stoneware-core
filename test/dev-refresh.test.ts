@@ -15,8 +15,8 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, readdirSync } from "node:fs";
 import { cp, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { createApp } from "../src/server.ts";
-import type { StonewareApp } from "../src/server.ts";
+import { createApp } from "../src/http/server.ts";
+import type { StonewareApp } from "../src/http/server.ts";
 
 const FIXTURE = join(import.meta.dir, "fixture");
 // A copy, because these tests delete build output and the fixture's own

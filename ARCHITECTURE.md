@@ -4,8 +4,45 @@ How Stoneware is put together, and why. This is for someone changing the
 framework rather than using it — user-facing docs live on the
 [documentation site](https://github.com/stoneware-dev/stoneware-docs).
 
-About 8,200 lines of TypeScript across 27 source modules, with 37 test files.
-Read `CLAUDE.md` first for the scope boundaries; this describes the mechanism.
+About 9,300 lines of TypeScript across 44 source modules, with 48 test files.
+Read `claude.md` first for the scope boundaries; this describes the mechanism.
+
+---
+
+## 0. Where things live
+
+`src/` is grouped by the stage of a request each module serves, so the folder
+list reads roughly in the order the pipeline runs.
+
+```text
+src/
+  index.ts          the public API — everything a user can import
+  jsx-runtime.ts    what `jsxImportSource: "stoneware"` compiles against
+  signals.ts        a re-export of @preact/signals-core, nothing more
+  config.ts         read by nearly everything, so it sits above the groups
+
+  routing/          a URL becomes a matched route
+                    router, route-table, url
+  render/           a route's JSX becomes one HTML string
+                    render, escape, attributes, document, types
+  http/             a Request becomes a Response
+                    server, listen, cluster, cors, csrf, public-csrf,
+                    middleware, context, observe
+  helpers/          what a template imports: Form, Image, seo, sitemap,
+                    Boundary, notFound
+  build/            islands become client chunks
+                    build, islands
+  cli/              the `stoneware` command
+  client/           the only code that reaches a browser
+```
+
+Two of these carry most of the weight: `http/server.ts` and `render/render.ts`
+are together about a quarter of the source. If you are looking for where
+something happens and it is not obvious from the folder, it is probably in one
+of those two.
+
+The four files at the top of `src/` stay there because `package.json`'s
+`exports` names them. Moving one changes what `stoneware/...` resolves to.
 
 ---
 
@@ -23,10 +60,10 @@ There is no VDOM, no reconciler, no diff, and no component instances. A
 
 ## 2. The request pipeline
 
-Order is the security model. It lives in `src/server.ts`, in `handleRequest`,
+Order is the security model. It lives in `src/http/server.ts`, in `handleRequest`,
 and the sequence is deliberate at every step:
 
-```
+```text
   Bun.serve
       │
       ├─ /_stoneware/*          built client chunks
@@ -66,23 +103,23 @@ others. A new code path physically cannot skip them.
 ## 3. Module map
 
 | Module | Responsibility |
-|---|---|
-| `server.ts` | The pipeline above. The only place responses are assembled. |
-| `router.ts` | Filename → pattern (via `Bun.FileSystemRouter`), module loading, page/action classification |
-| `route-table.ts` | Matching a path against compiled patterns. Own implementation — see §7 |
-| `render.ts` | JSX tree → HTML string, island collection, error attribution |
+| --- | --- |
+| `http/server.ts` | The pipeline above. The only place responses are assembled. |
+| `routing/router.ts` | Filename → pattern (via `Bun.FileSystemRouter`), module loading, page/action classification |
+| `routing/route-table.ts` | Matching a path against compiled patterns. Own implementation — see §7 |
+| `render/render.ts` | JSX tree → HTML string, island collection, error attribution |
 | `jsx-runtime.ts` | `h`/`jsx`/`Fragment`. Builds inert `{type, props}` records, nothing more |
-| `types.ts` | `VNode`, `Child`, `Component` vs `PageComponent`. Symbol brands |
-| `escape.ts` | `Bun.escapeHTML`, `raw()`, and JSON-in-HTML serialization |
-| `attributes.ts` | What an attribute may be. **Shared by both renderers** — see §6 |
+| `render/types.ts` | `VNode`, `Child`, `Component` vs `PageComponent`. Symbol brands |
+| `render/escape.ts` | `Bun.escapeHTML`, `raw()`, and JSON-in-HTML serialization |
+| `render/attributes.ts` | What an attribute may be. **Shared by both renderers** — see §6 |
 | `config.ts` | Resolution and defaults. `DEFAULT_CSP`, `buildCSP` |
-| `csrf.ts` / `public-csrf.ts` | `Bun.CSRF` wrapper; the token helper templates call |
-| `context.ts` | `AsyncLocalStorage` for the active render |
-| `build.ts` | Island chunks and the stylesheet |
-| `islands.ts` | Discovery and the component → name registry |
-| `document.ts` | `<html>` assembly, CSP meta tag |
-| `observe.ts` | The request hook |
-| `boundary.tsx` | `<Boundary>` |
+| `http/csrf.ts` / `http/public-csrf.ts` | `Bun.CSRF` wrapper; the token helper templates call |
+| `http/context.ts` | `AsyncLocalStorage` for the active render |
+| `build/build.ts` | Island chunks and the stylesheet |
+| `build/islands.ts` | Discovery and the component → name registry |
+| `render/document.ts` | `<html>` assembly, CSP meta tag |
+| `http/observe.ts` | The request hook |
+| `helpers/boundary.tsx` | `<Boundary>` |
 | `cli/` | `dev`, `build`, `export`, `preview`, `routes`, `doctor`, `vercel` |
 | `client/` | The browser runtime: `hydrate`, `dom`, `registry`, `lazy` |
 
@@ -125,7 +162,7 @@ page-shaped tree.
 
 A file under `islands/` is the only thing that ships JavaScript.
 
-```
+```text
   islands/Counter.tsx
       │
       ├─ server: rendered once into the HTML (no empty flash)
@@ -194,7 +231,7 @@ from a project that has none, so the app comes up with `csp`, `cors` and
 
 **Verification method** — used for each fix, and the only one that works:
 
-```
+```text
 build → copy the output elsewhere → delete routes/, islands/,
         and anything read by a computed path → serve → curl
 ```

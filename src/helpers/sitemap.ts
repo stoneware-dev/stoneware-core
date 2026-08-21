@@ -19,7 +19,7 @@
  *
  *   // routes/sitemap.xml.ts
  *   import { sitemap } from "stoneware";
- *   import { ARTICLES } from "../lib/content.ts";
+ *   import { ARTICLES } from "../../lib/content.ts";
  *
  *   export function GET() {
  *     return sitemap(

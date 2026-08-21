@@ -12,10 +12,10 @@
  * a real priority signal for the one image that matters.
  */
 
-import { addPreload } from "./context.ts";
-import { escapeHTML } from "./escape.ts";
-import { h } from "./jsx-runtime.ts";
-import type { VNode } from "./types.ts";
+import { addPreload } from "../http/context.ts";
+import { escapeHTML } from "../render/escape.ts";
+import { h } from "../jsx-runtime.ts";
+import type { VNode } from "../render/types.ts";
 
 export interface ImageProps {
   src: string;

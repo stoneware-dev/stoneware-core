@@ -10,7 +10,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { buildDocument, resetDocumentWarnings } from "../src/document.ts";
+import { buildDocument, resetDocumentWarnings } from "../src/render/document.ts";
 
 const BASE = {
   islands: [],

@@ -15,8 +15,8 @@ import { existsSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { compileRoutes, matchRoute } from "./route-table.ts";
 import type { RouteIndex } from "./route-table.ts";
-import type { Middleware, Locals } from "./middleware.ts";
-import type { Child, Component, PageComponent } from "./types.ts";
+import type { Middleware, Locals } from "../http/middleware.ts";
+import type { Child, Component, PageComponent } from "../render/types.ts";
 
 /** `Bun.file().exists()` reports false for directories, so stat instead. */
 export function directoryExists(path: string): boolean {

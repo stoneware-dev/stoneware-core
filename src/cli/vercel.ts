@@ -19,7 +19,7 @@
 import { cp, mkdir, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { CLIENT_ASSET_PREFIX } from "../build.ts";
+import { CLIENT_ASSET_PREFIX } from "../build/build.ts";
 import { loadConfigFile, resolveConfig } from "../config.ts";
 
 /** Where Vercel's Bun preset looks for the entrypoint. Root or `src/`, `server.*`. */
@@ -89,7 +89,7 @@ function entrypointSource(): string {
 // Vercel's Bun framework preset detects the Bun.serve() call inside this import
 // and routes requests through it. The port and hostname the bundle passes are
 // ignored on Vercel and used only when this file is run locally.
-import "./.stoneware/server.js";
+import ".stoneware/server.js";
 `;
 }
 

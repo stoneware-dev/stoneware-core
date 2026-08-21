@@ -1,4 +1,4 @@
-import type { PageProps } from "../../../../src/router.ts";
+import type { PageProps } from "../../../../src/routing/router.ts";
 
 /** A dynamic route, to prove middleware runs for those too. */
 export default function Thing({ params, locals }: PageProps) {

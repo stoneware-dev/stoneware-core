@@ -13,7 +13,7 @@ import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { buildStaticIndex } from "../src/server.ts";
+import { buildStaticIndex } from "../src/http/server.ts";
 
 const ROOT = join(tmpdir(), `stoneware-static-index-${Date.now()}`);
 const PLAIN = join(ROOT, "plain");

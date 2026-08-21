@@ -1,4 +1,4 @@
-import { seo } from "../../../src/seo.tsx";
+import { seo } from "../../../src/helpers/seo.tsx";
 
 export function head() {
   return seo({ title: "Correct" });

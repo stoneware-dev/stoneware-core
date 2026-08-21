@@ -8,8 +8,8 @@
 
 import { beforeAll, describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import { createApp } from "../src/server.ts";
-import type { StonewareApp } from "../src/server.ts";
+import { createApp } from "../src/http/server.ts";
+import type { StonewareApp } from "../src/http/server.ts";
 
 const FIXTURE_ROOT = join(import.meta.dir, "fixture-mw");
 const SECRET = "middleware-test-secret-0123456";

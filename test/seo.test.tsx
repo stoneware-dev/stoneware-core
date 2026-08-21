@@ -6,9 +6,9 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { renderToString } from "../src/render.ts";
-import { seo } from "../src/seo.tsx";
-import { withRenderContext } from "../src/context.ts";
+import { renderToString } from "../src/render/render.ts";
+import { seo } from "../src/helpers/seo.tsx";
+import { withRenderContext } from "../src/http/context.ts";
 import { resolveConfig } from "../src/config.ts";
 
 const render = (child: ReturnType<typeof seo>) => renderToString(child).html;

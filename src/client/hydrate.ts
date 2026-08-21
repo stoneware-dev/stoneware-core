@@ -13,7 +13,7 @@
 import { mountTree } from "./dom.ts";
 import { claim, hasTriggered, readPayload, register } from "./registry.ts";
 import type { PayloadEntry } from "./registry.ts";
-import type { Component } from "../types.ts";
+import type { Component } from "../render/types.ts";
 
 /**
  * Activate the instances of one island that are ready for it.

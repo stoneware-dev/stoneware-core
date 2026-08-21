@@ -8,9 +8,9 @@
 
 import { beforeAll, describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import { createApp } from "../src/server.ts";
-import { isNotFound, notFound } from "../src/not-found.ts";
-import type { StonewareApp } from "../src/server.ts";
+import { createApp } from "../src/http/server.ts";
+import { isNotFound, notFound } from "../src/helpers/not-found.ts";
+import type { StonewareApp } from "../src/http/server.ts";
 
 const FIXTURE_ROOT = join(import.meta.dir, "fixture-errors");
 

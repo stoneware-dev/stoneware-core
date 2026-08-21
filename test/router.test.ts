@@ -6,9 +6,9 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { compileRoutes, matchRoute } from "../src/route-table.ts";
+import { compileRoutes, matchRoute } from "../src/routing/route-table.ts";
 import { join } from "node:path";
-import { Router } from "../src/router.ts";
+import { Router } from "../src/routing/router.ts";
 
 const FIXTURE_ROUTES = join(import.meta.dir, "fixture", "routes");
 

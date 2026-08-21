@@ -1,4 +1,4 @@
-import { seo } from "../../../src/seo.tsx";
+import { seo } from "../../../src/helpers/seo.tsx";
 
 /** Owns its whole document, so seo() inside its own <head> is legitimate. */
 export default function FullDocument() {

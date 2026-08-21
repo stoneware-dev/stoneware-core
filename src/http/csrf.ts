@@ -6,7 +6,7 @@
  * decorator to remember (CLAUDE.md §9).
  */
 
-import type { ResolvedConfig } from "./config.ts";
+import type { ResolvedConfig } from "../config.ts";
 
 /**
  * Largest body this module will parse looking for a token.

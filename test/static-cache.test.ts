@@ -19,7 +19,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { createApp } from "../src/server.ts";
+import { createApp } from "../src/http/server.ts";
 
 const ROOT = join(tmpdir(), `stoneware-static-cache-${Date.now()}`);
 const PUBLIC = join(ROOT, "public");

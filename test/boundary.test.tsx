@@ -11,12 +11,12 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { Boundary } from "../src/boundary.tsx";
-import { withRenderContext } from "../src/context.ts";
-import { notFound } from "../src/not-found.ts";
-import { renderToString } from "../src/render.ts";
+import { Boundary } from "../src/helpers/boundary.tsx";
+import { withRenderContext } from "../src/http/context.ts";
+import { notFound } from "../src/helpers/not-found.ts";
+import { renderToString } from "../src/render/render.ts";
 import { resolveConfig } from "../src/config.ts";
-import type { RenderContext } from "../src/context.ts";
+import type { RenderContext } from "../src/http/context.ts";
 
 const SECRET = "boundary-test-secret-0123456789";
 

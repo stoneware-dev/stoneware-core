@@ -14,7 +14,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_CSP, buildCSP, resolveConfig } from "../src/config.ts";
-import { createApp } from "../src/server.ts";
+import { createApp } from "../src/http/server.ts";
 import { join } from "node:path";
 
 const FIXTURE = join(import.meta.dir, "fixture");

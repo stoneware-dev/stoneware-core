@@ -1,5 +1,5 @@
-import { notFound } from "../../../../src/not-found.ts";
-import type { PageProps } from "../../../../src/router.ts";
+import { notFound } from "../../../../src/helpers/not-found.ts";
+import type { PageProps } from "../../../../src/routing/router.ts";
 
 const POSTS: Record<string, string> = { hello: "Hello world" };
 

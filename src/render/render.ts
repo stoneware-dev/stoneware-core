@@ -17,12 +17,12 @@ import {
   isSignalLike,
   unsafeURLReason,
 } from "./attributes.ts";
-import { noteCaught, peekRenderContext } from "./context.ts";
+import { noteCaught, peekRenderContext } from "../http/context.ts";
 import { escapeHTML, safeJSONStringify } from "./escape.ts";
-import { Boundary } from "./boundary.tsx";
-import { isNotFound } from "./not-found.ts";
+import { Boundary } from "../helpers/boundary.tsx";
+import { isNotFound } from "../helpers/not-found.ts";
 import { Fragment, isRaw, isVNode } from "./types.ts";
-import type { BoundaryProps } from "./boundary.tsx";
+import type { BoundaryProps } from "../helpers/boundary.tsx";
 import type { Child, Component, Props, VNode } from "./types.ts";
 
 /** Elements that must not be given a closing tag. */

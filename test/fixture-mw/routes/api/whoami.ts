@@ -1,4 +1,4 @@
-import type { ActionContext } from "../../../../src/router.ts";
+import type { ActionContext } from "../../../../src/routing/router.ts";
 
 export function GET({ locals }: ActionContext): Response {
   return Response.json({ user: (locals as Record<string, unknown>).user });

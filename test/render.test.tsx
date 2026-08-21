@@ -7,8 +7,8 @@
 
 import { describe, expect, test } from "bun:test";
 import { signal } from "@preact/signals-core";
-import { raw } from "../src/escape.ts";
-import { renderToString } from "../src/render.ts";
+import { raw } from "../src/render/escape.ts";
+import { renderToString } from "../src/render/render.ts";
 import { h } from "../src/jsx-runtime.ts";
 
 const html = (tree: Parameters<typeof renderToString>[0]) => renderToString(tree).html;

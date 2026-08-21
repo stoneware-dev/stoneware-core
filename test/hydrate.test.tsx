@@ -9,7 +9,7 @@ import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { computed, signal } from "@preact/signals-core";
 import { h } from "../src/jsx-runtime.ts";
-import { Boundary } from "../src/boundary.tsx";
+import { Boundary } from "../src/helpers/boundary.tsx";
 
 // `bun test` runs every file in one process, and registering happy-dom replaces
 // globals including Response and Blob. Left in place, it breaks Bun.file()

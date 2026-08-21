@@ -9,13 +9,13 @@
 import { spawnSync } from "node:child_process";
 import { watch } from "node:fs";
 import { join, relative } from "node:path";
-import { CLIENT_ASSET_PREFIX } from "../build.ts";
+import { CLIENT_ASSET_PREFIX } from "../build/build.ts";
 import { loadConfigFile } from "../config.ts";
-import { consoleObserver } from "../observe.ts";
-import { directoryExists } from "../router.ts";
-import { createApp } from "../server.ts";
-import type { RefreshOptions } from "../server.ts";
-import { listen } from "../listen.ts";
+import { consoleObserver } from "../http/observe.ts";
+import { directoryExists } from "../routing/router.ts";
+import { createApp } from "../http/server.ts";
+import type { RefreshOptions } from "../http/server.ts";
+import { listen } from "../http/listen.ts";
 
 /** A stylesheet is the one thing under `routes/` that is built rather than imported. */
 function isCSS(file: string): boolean {

@@ -6,10 +6,10 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { Image } from "../src/image.tsx";
-import { buildDocument } from "../src/document.ts";
-import { renderToString } from "../src/render.ts";
-import { withRenderContext } from "../src/context.ts";
+import { Image } from "../src/helpers/image.tsx";
+import { buildDocument } from "../src/render/document.ts";
+import { renderToString } from "../src/render/render.ts";
+import { withRenderContext } from "../src/http/context.ts";
 import { resolveConfig } from "../src/config.ts";
 
 const html = (tree: Parameters<typeof renderToString>[0]) => renderToString(tree).html;

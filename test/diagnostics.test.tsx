@@ -8,9 +8,9 @@
 
 import { beforeAll, describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import { renderToString } from "../src/render.ts";
-import { createApp } from "../src/server.ts";
-import type { StonewareApp } from "../src/server.ts";
+import { renderToString } from "../src/render/render.ts";
+import { createApp } from "../src/http/server.ts";
+import type { StonewareApp } from "../src/http/server.ts";
 
 describe("JSX compiled against the wrong runtime", () => {
   /** What React's JSX transform produces, as the renderer would receive it. */

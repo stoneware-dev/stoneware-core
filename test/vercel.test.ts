@@ -42,7 +42,7 @@ describe("the entrypoint", () => {
     // evaluates. Re-exporting a handler instead would leave the server unstarted
     // and every request unrouted.
     const source = await Bun.file(join(ROOT, "server.js")).text();
-    expect(source).toContain('import "./.stoneware/server.js"');
+    expect(source).toContain('import ".stoneware/server.js"');
     expect(source).not.toContain("export default");
   });
 

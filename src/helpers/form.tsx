@@ -7,10 +7,10 @@
  * protection - it simply fails.
  */
 
-import { generateToken } from "./csrf.ts";
-import { getRenderContext, markPersonalized } from "./context.ts";
-import { isSafeMethod } from "./csrf.ts";
-import type { Child } from "./types.ts";
+import { generateToken } from "../http/csrf.ts";
+import { getRenderContext, markPersonalized } from "../http/context.ts";
+import { isSafeMethod } from "../http/csrf.ts";
+import type { Child } from "../render/types.ts";
 
 export interface FormProps {
   /** Route to submit to, e.g. `/api/subscribe`. */

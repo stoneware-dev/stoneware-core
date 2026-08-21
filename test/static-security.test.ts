@@ -9,8 +9,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createApp, safeJoin } from "../src/server.ts";
-import type { StonewareApp } from "../src/server.ts";
+import { createApp, safeJoin } from "../src/http/server.ts";
+import type { StonewareApp } from "../src/http/server.ts";
 
 const FIXTURE_ROOT = join(import.meta.dir, "fixture");
 const PUBLIC = join(FIXTURE_ROOT, "public");
@@ -132,7 +132,11 @@ describe("symbolic links out of public/", () => {
         { root: FIXTURE_ROOT, csrf: { secret: "symlink-secret-0123456789ab" } },
         { dev: true },
       );
-      const response = await guarded.fetch(new Request("http://localhost/escape/csrf.ts"));
+      // index.ts rather than any other module in src/: it is the package entry
+      // named in "exports", so it cannot move without a deliberate decision. A
+      // file that can be relocated turns this into a 404 for the wrong reason,
+      // and the test keeps passing while asserting nothing.
+      const response = await guarded.fetch(new Request("http://localhost/escape/index.ts"));
       expect(response.status).toBe(404);
 
       // And an ordinary asset beside it is unaffected.
@@ -162,7 +166,7 @@ describe("symbolic links out of public/", () => {
         },
         { dev: true },
       );
-      const response = await permissive.fetch(new Request("http://localhost/escape/csrf.ts"));
+      const response = await permissive.fetch(new Request("http://localhost/escape/index.ts"));
       expect(response.status).toBe(200);
     } finally {
       if (made) rmSync(LINK, { recursive: true, force: true });
@@ -207,6 +211,9 @@ describe("the resolved-root cache", () => {
     // The contract did not change when the existence check moved ahead of the
     // link check: an absent file resolved to null before, and must still.
     expect(safeJoin(PUBLIC, "/no-such-file.css")).toBeNull();
-    expect(safeJoin(PUBLIC, "/../../src/csrf.ts")).toBeNull();
+    // A file that genuinely exists, outside the root - so this is refused for
+    // being out of bounds rather than for being absent, which is the case the
+    // line above already covers.
+    expect(safeJoin(PUBLIC, "/../../src/index.ts")).toBeNull();
   });
 });

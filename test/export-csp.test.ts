@@ -21,7 +21,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { cp, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { exportSite } from "../src/cli/export.ts";
-import { metaCSP } from "../src/document.ts";
+import { metaCSP } from "../src/render/document.ts";
 import { DEFAULT_CSP } from "../src/config.ts";
 import type { ExportResult } from "../src/cli/export.ts";
 

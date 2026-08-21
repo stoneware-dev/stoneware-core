@@ -14,9 +14,9 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { componentPathOf, renderToString } from "../src/render.ts";
-import { Boundary } from "../src/boundary.tsx";
-import { isNotFound, notFound } from "../src/not-found.ts";
+import { componentPathOf, renderToString } from "../src/render/render.ts";
+import { Boundary } from "../src/helpers/boundary.tsx";
+import { isNotFound, notFound } from "../src/helpers/not-found.ts";
 import { join } from "node:path";
 
 /** The message of whatever `fn` throws. */
@@ -233,7 +233,7 @@ describe("when routes/_500.tsx fails the same way", () => {
   const ROOT = join(import.meta.dir, "fixture-error-attribution");
 
   test("the built-in page shows the original error, not the error page's", async () => {
-    const { createApp } = await import("../src/server.ts");
+    const { createApp } = await import("../src/http/server.ts");
     const app = await createApp(
       { root: ROOT, csrf: { secret: "attribution-secret-0123456789" } },
       { dev: true },

@@ -18,7 +18,7 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 
-import { createApp } from "../src/server.ts";
+import { createApp } from "../src/http/server.ts";
 
 // A fixture inside the repo rather than in a temp directory: routes here are
 // JSX, and `stoneware/jsx-runtime` only resolves from within the package.

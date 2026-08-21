@@ -7,10 +7,10 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { buildDocument } from "../src/document.ts";
-import { RUNTIME_CHUNK_KEY } from "../src/build.ts";
-import { renderToString } from "../src/render.ts";
-import type { Component } from "../src/types.ts";
+import { buildDocument } from "../src/render/document.ts";
+import { RUNTIME_CHUNK_KEY } from "../src/build/build.ts";
+import { renderToString } from "../src/render/render.ts";
+import type { Component } from "../src/render/types.ts";
 
 function Counter(props: { start?: number }) {
   return <button type="button">Clicked {props.start ?? 0} times</button>;

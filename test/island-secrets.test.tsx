@@ -8,8 +8,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { renderToString } from "../src/render.ts";
-import { withRenderContext } from "../src/context.ts";
+import { renderToString } from "../src/render/render.ts";
+import { withRenderContext } from "../src/http/context.ts";
 import { resolveConfig } from "../src/config.ts";
 
 function Island(_props: Record<string, unknown>) {

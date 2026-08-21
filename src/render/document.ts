@@ -8,8 +8,8 @@
 
 import { renderIslandPayload } from "./render.ts";
 import type { CollectedIsland } from "./render.ts";
-import { RUNTIME_CHUNK_KEY } from "./build.ts";
-import type { IslandManifest } from "./build.ts";
+import { RUNTIME_CHUNK_KEY } from "../build/build.ts";
+import type { IslandManifest } from "../build/build.ts";
 
 export interface DocumentOptions {
   /** Markup produced by the route. */

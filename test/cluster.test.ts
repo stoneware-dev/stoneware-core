@@ -12,8 +12,8 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { WORKER_ENV, isWorker, resolveWorkerCount, supervise } from "../src/cluster.ts";
-import type { WorkerHandle } from "../src/cluster.ts";
+import { WORKER_ENV, isWorker, resolveWorkerCount, supervise } from "../src/http/cluster.ts";
+import type { WorkerHandle } from "../src/http/cluster.ts";
 
 const base = { dev: false, platform: "linux", cpuCount: 8 };
 

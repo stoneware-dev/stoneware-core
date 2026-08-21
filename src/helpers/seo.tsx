@@ -18,10 +18,10 @@
  * these are ordinary vnodes rather than a string of markup.
  */
 
-import { noteSEOCall, peekRenderContext } from "./context.ts";
-import { raw, safeJSONStringify } from "./escape.ts";
-import { Fragment, h } from "./jsx-runtime.ts";
-import type { Child } from "./types.ts";
+import { noteSEOCall, peekRenderContext } from "../http/context.ts";
+import { raw, safeJSONStringify } from "../render/escape.ts";
+import { Fragment, h } from "../jsx-runtime.ts";
+import type { Child } from "../render/types.ts";
 
 /**
  * Open Graph is the one that pays for itself.

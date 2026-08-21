@@ -12,8 +12,8 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { serve } from "../src/server.ts";
-import { WORKER_ENV } from "../src/cluster.ts";
+import { serve } from "../src/http/server.ts";
+import { WORKER_ENV } from "../src/http/cluster.ts";
 
 const ROOT = join(tmpdir(), `stoneware-worker-serve-${Date.now()}`);
 const SECRET = "worker-serve-test-secret";

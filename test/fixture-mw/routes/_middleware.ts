@@ -1,4 +1,4 @@
-import type { MiddlewareContext } from "../../../src/middleware.ts";
+import type { MiddlewareContext } from "../../../src/http/middleware.ts";
 
 /** Exercises all three things middleware can do. */
 export default function middleware({ url, locals }: MiddlewareContext) {

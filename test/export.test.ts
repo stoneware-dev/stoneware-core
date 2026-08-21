@@ -49,7 +49,7 @@ describe("static export", () => {
     // static files carry no headers. The server has no need of the tag - it
     // sends the real header, which is strictly stronger. Removing that one tag
     // must leave the two byte-identical, or something else has drifted.
-    const { createApp } = await import("../src/server.ts");
+    const { createApp } = await import("../src/http/server.ts");
     const app = await createApp({ root: FIXTURE_ROOT }, { dev: false });
     const served = await (await app.fetch(new Request("http://localhost/plain"))).text();
 

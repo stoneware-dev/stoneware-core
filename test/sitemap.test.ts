@@ -8,7 +8,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { sitemap, sitemapXML } from "../src/sitemap.ts";
+import { sitemap, sitemapXML } from "../src/helpers/sitemap.ts";
 
 const ORIGIN = "https://example.com";
 

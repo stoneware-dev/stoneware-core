@@ -23,9 +23,9 @@
  * and not in the browser would be worse than one that never claimed to.
  */
 
-import { jsx } from "./jsx-runtime.ts";
-import { Fragment } from "./types.ts";
-import type { Child, VNode } from "./types.ts";
+import { jsx } from "../jsx-runtime.ts";
+import { Fragment } from "../render/types.ts";
+import type { Child, VNode } from "../render/types.ts";
 
 export interface BoundaryProps {
   /**

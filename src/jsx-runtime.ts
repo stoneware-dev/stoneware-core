@@ -11,8 +11,8 @@
  * arguments), so hand-written `h()` calls and transpiled TSX interoperate.
  */
 
-import { VNODE, Fragment } from "./types.ts";
-import type { Child, ElementType, Props, VNode } from "./types.ts";
+import { VNODE, Fragment } from "./render/types.ts";
+import type { Child, ElementType, Props, VNode } from "./render/types.ts";
 
 export { Fragment };
 

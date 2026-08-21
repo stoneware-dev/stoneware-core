@@ -1,6 +1,6 @@
-import type { PageProps } from "../../../src/router.ts";
-import { Image } from "../../../src/image.tsx";
-import { seo } from "../../../src/seo.tsx";
+import type { PageProps } from "../../../src/routing/router.ts";
+import { Image } from "../../../src/helpers/image.tsx";
+import { seo } from "../../../src/helpers/seo.tsx";
 
 /** Contributes to <head> without the page owning the whole document. */
 export function head({ url }: PageProps) {

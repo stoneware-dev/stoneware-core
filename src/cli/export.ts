@@ -11,11 +11,11 @@
 import { cp, mkdir, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
-import { buildIslands, buildStyles } from "../build.ts";
+import { buildIslands, buildStyles } from "../build/build.ts";
 import { SECURITY_HEADERS, loadConfigFile, resolveConfig } from "../config.ts";
-import { discoverIslands } from "../islands.ts";
-import { createApp } from "../server.ts";
-import { Router, isReservedRoute } from "../router.ts";
+import { discoverIslands } from "../build/islands.ts";
+import { createApp } from "../http/server.ts";
+import { Router, isReservedRoute } from "../routing/router.ts";
 
 export interface ExportResult {
   outDir: string;

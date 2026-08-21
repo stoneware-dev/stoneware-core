@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { requestURL } from "../src/url.ts";
+import { requestURL } from "../src/routing/url.ts";
 import { resolveConfig } from "../src/config.ts";
 
 const forwarded = (headers: Record<string, string>) =>

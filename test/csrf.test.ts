@@ -7,7 +7,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { resolveConfig } from "../src/config.ts";
-import { generateToken, isSafeMethod, verifyRequest } from "../src/csrf.ts";
+import { generateToken, isSafeMethod, verifyRequest } from "../src/http/csrf.ts";
 
 const config = resolveConfig({ csrf: { secret: "unit-test-secret-value-0123456789" } }, false);
 

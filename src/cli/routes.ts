@@ -14,8 +14,8 @@
 
 import { relative } from "node:path";
 import { loadConfigFile, resolveConfig } from "../config.ts";
-import { compileRoutes } from "../route-table.ts";
-import { Router, isReservedRoute } from "../router.ts";
+import { compileRoutes } from "../routing/route-table.ts";
+import { Router, isReservedRoute } from "../routing/router.ts";
 
 export type RouteKind = "page" | "action" | "reserved" | "unknown";
 

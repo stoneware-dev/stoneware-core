@@ -7,7 +7,7 @@
  */
 
 import { resolve } from "node:path";
-import type { Observer } from "./observe.ts";
+import type { Observer } from "./http/observe.ts";
 
 export interface CSRFConfig {
   /**

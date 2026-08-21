@@ -7,8 +7,8 @@
  */
 
 import { relative, resolve } from "node:path";
-import { directoryExists } from "./router.ts";
-import type { Component } from "./types.ts";
+import { directoryExists } from "../routing/router.ts";
+import type { Component } from "../render/types.ts";
 
 export interface IslandEntry {
   /** Stable identifier derived from the path, e.g. `Counter` or `forms/Newsletter`. */

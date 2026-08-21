@@ -9,7 +9,7 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { ResolvedConfig } from "./config.ts";
+import type { ResolvedConfig } from "../config.ts";
 
 export interface RenderContext {
   config: ResolvedConfig;

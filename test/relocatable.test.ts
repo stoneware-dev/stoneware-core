@@ -19,8 +19,8 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { build, inlineClientAssets } from "../src/cli/build.ts";
 import type { BuildResult } from "../src/cli/build.ts";
-import { createApp } from "../src/server.ts";
-import { Router, scanRoutes } from "../src/router.ts";
+import { createApp } from "../src/http/server.ts";
+import { Router, scanRoutes } from "../src/routing/router.ts";
 import { emitVercel } from "../src/cli/vercel.ts";
 
 const FIXTURE_ROOT = join(import.meta.dir, "fixture");
@@ -72,7 +72,7 @@ afterAll(async () => {
 describe("the built bundle carries no build-machine paths", () => {
   test("lands at the path the Vercel entrypoint imports", async () => {
     // `stoneware build --target vercel` writes a root server.js containing
-    // `import "./.stoneware/server.js"`. If the build ever moves its output,
+    // `import ".stoneware/server.js"`. If the build ever moves its output,
     // that import breaks and every request on Vercel 404s.
     expect(await Bun.file(join(buildDir, ".stoneware", "server.js")).exists()).toBe(true);
   });
@@ -357,6 +357,7 @@ describe("client assets reach a platform that ships only what it traced", () => 
   const traced = join(import.meta.dir, "..", ".vercel-assets-traced");
   let emitted: Awaited<ReturnType<typeof emitVercel>>;
   let base = "";
+  let savedPort: string | undefined;
 
   beforeAll(async () => {
     emitted = await emitVercel(buildDir);
@@ -370,6 +371,13 @@ describe("client assets reach a platform that ships only what it traced", () => 
     await cp(join(buildDir, "stoneware.config.ts"), join(traced, "stoneware.config.ts"));
     await cp(join(buildDir, "public"), join(traced, "public"), { recursive: true });
 
+    // How the bundle is told which port to bind: it reads PORT, the same way a
+    // deploy target sets it. Saved and put back in afterAll because this
+    // process goes on to run the rest of the suite, and PORT outranks an
+    // explicitly configured port (config.ts:383) - so leaving it set makes
+    // every later test that starts a server bind 4763 instead of the port it
+    // asked for, and fail or not depending only on file order.
+    savedPort = process.env.PORT;
     process.env.PORT = "4763";
     await import(Bun.pathToFileURL(join(traced, ".stoneware", "server.js")).href);
     await Bun.sleep(400);
@@ -378,6 +386,9 @@ describe("client assets reach a platform that ships only what it traced", () => 
 
   afterAll(async () => {
     await rm(traced, { recursive: true, force: true });
+
+    if (savedPort === undefined) delete process.env.PORT;
+    else process.env.PORT = savedPort;
   });
 
   test("the chunks are copied where the platform will ship them", () => {

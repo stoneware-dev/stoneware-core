@@ -12,7 +12,7 @@
  * it and there would be no saving left to speak of.
  */
 
-import type { Props } from "../types.ts";
+import type { Props } from "../render/types.ts";
 
 /** How an island instance decides when to activate. */
 export type Strategy = "load" | "visible" | "idle" | "media";

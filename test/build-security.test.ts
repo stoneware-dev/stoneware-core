@@ -13,8 +13,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { buildIslands } from "../src/build.ts";
-import { discoverIslands } from "../src/islands.ts";
+import { buildIslands } from "../src/build/build.ts";
+import { discoverIslands } from "../src/build/islands.ts";
 
 // Inside the repo, because the generated entries import "stoneware/client" and
 // need the project's module resolution to find it.

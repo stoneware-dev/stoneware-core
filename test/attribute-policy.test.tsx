@@ -9,7 +9,7 @@
 
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
-import { renderToString } from "../src/render.ts";
+import { renderToString } from "../src/render/render.ts";
 import { signal } from "@preact/signals-core";
 
 GlobalRegistrator.register();

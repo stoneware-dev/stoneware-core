@@ -13,8 +13,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { rm } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { buildIslands } from "../src/build.ts";
-import { discoverIslands } from "../src/islands.ts";
+import { buildIslands } from "../src/build/build.ts";
+import { discoverIslands } from "../src/build/islands.ts";
 
 const FIXTURE_ROOT = join(import.meta.dir, "fixture");
 const OUT_DIR = join(import.meta.dir, "..", ".stoneware-budget");

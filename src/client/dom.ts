@@ -9,9 +9,9 @@
  */
 
 import { Signal, effect } from "@preact/signals-core";
-import { ATTRIBUTE_ALIASES, EVENT_HANDLER, isSignalLike, unsafeURLReason } from "../attributes.ts";
-import { Fragment, isRaw, isVNode } from "../types.ts";
-import type { Child, Props, VNode } from "../types.ts";
+import { ATTRIBUTE_ALIASES, EVENT_HANDLER, isSignalLike, unsafeURLReason } from "../render/attributes.ts";
+import { Fragment, isRaw, isVNode } from "../render/types.ts";
+import type { Child, Props, VNode } from "../render/types.ts";
 
 /** Properties that must be assigned as DOM properties, not attributes. */
 const DOM_PROPERTIES = new Set(["value", "checked", "selected", "indeterminate"]);
